@@ -1,1 +1,922 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"><title>Gaze Mouse</title><style>:root{color-scheme:dark;font-family:system-ui;background:#0b0d10;color:#f5f7fb}*{box-sizing:border-box}body{margin:0;background:#0b0d10}.app{padding:16px;max-width:900px;margin:auto}.top{display:flex;justify-content:space-between;gap:12px;align-items:center}.pill{padding:8px 10px;border-radius:999px;background:#211d11;color:#ffe59a;border:1px solid #6b5a2f;font-size:12px}.ok{background:#102019;color:#a7efc3;border-color:#2d6847}.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0}.card{background:#13171d;border:1px solid #252c35;border-radius:16px;padding:12px}button,select{width:100%;min-height:46px;border-radius:12px;border:0;font:inherit}button{background:#74f09c;color:#07100a;font-weight:700}button.secondary{background:#242b34;color:#eef2f7}button:disabled{opacity:.45}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.metric{padding:10px;text-align:center;border:1px solid #252c35;border-radius:12px}.metric b{display:block}.metric span{font-size:10px;color:#8d96a4}.test{margin-top:12px;border:1px solid #252c35;border-radius:18px;padding:14px;min-height:48vh}.targets{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.target{min-height:90px;background:#171c23;color:#e8eef7;border:1px solid #303947}.target.hit{background:#244f35;border-color:#5de987}.target small{display:block;color:#8b95a4}video{position:fixed;right:12px;bottom:12px;width:108px;aspect-ratio:3/4;object-fit:cover;border-radius:14px;border:1px solid #3b4553;transform:scaleX(-1);background:#000}.cursor{position:fixed;z-index:1000;width:34px;height:34px;border-radius:50%;border:3px solid #fff;background:#74f09c55;transform:translate(-50%,-50%);pointer-events:none;display:none}.cursor:after{content:"";position:absolute;inset:9px;border-radius:50%;background:#74f09c}.cal{position:fixed;inset:0;z-index:2000;background:#07090c;display:none}.cal.show{display:block}.dot{position:absolute;width:30px;height:30px;border-radius:50%;background:#74f09c;transform:translate(-50%,-50%);box-shadow:0 0 0 18px #74f09c18}.msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;width:min(90vw,430px);color:#cbd4df}.toast{position:fixed;z-index:3000;left:50%;bottom:18px;transform:translateX(-50%);background:#202731;border:1px solid #384250;border-radius:999px;padding:10px 14px;display:none;max-width:calc(100vw - 30px);font-size:12px}.toast.show{display:block}@media(min-width:720px){.controls{grid-template-columns:repeat(4,1fr)}}</style></head><body><main class="app"><div class="top"><div><h2 style="margin:0">Gaze Mouse</h2><div style="color:#9aa3b2;font-size:12px">Camera-only eye tracking prototype</div></div><div id="status" class="pill">Model loading…</div></div><section class="controls"><div class="card"><button id="camera" disabled>Start camera</button></div><div class="card"><button id="calibrate" class="secondary" disabled>9-point calibrate</button></div><div class="card"><select id="mode"><option value="wink">Left wink</option><option value="dwell">Dwell 1 sec</option><option value="double">Double blink</option></select></div><div class="card"><button id="full" class="secondary">Fullscreen</button></div></section><section class="metrics"><div class="metric"><b id="fps">0</b><span>FPS</span></div><div class="metric"><b id="face">No</b><span>Face</span></div><div class="metric"><b id="calstate">No</b><span>Calibrated</span></div><div class="metric"><b id="clicks">0</b><span>Clicks</span></div></section><section class="test"><p style="text-align:center;color:#a8b1bf;font-size:13px">After calibration, look at a tile and use your selected eye signal to click it.</p><div class="targets">${["Mail","Search","Music","Back","Confirm","Next","Open","Run","Stop"].map((x,i)=>`<button class="target">${x}<small>Target ${i+1}</small></button>`).join("")}</div></section><p style="color:#737d8c;font-size:11px">Frames are processed locally in your browser. The MediaPipe model/runtime load from public CDNs.</p></main><video id="video" playsinline muted></video><div id="cursor" class="cursor"></div><div id="cal" class="cal"><div id="dot" class="dot"></div><div class="msg"><b id="ctitle">Calibration</b><br><span id="chint">Keep your head still and look at the green point.</span></div></div><div id="toast" class="toast"></div><script type="module">import{FaceLandmarker,FilesetResolver}from"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm";const $=id=>document.getElementById(id),video=$("video"),status=$("status"),camera=$("camera"),calibrate=$("calibrate"),mode=$("mode"),cursor=$("cursor"),cal=$("cal"),dotEl=$("dot"),toast=$("toast");let landmarker,stream,running=false,calibrated=false,feat=null,blink={left:0,right:0},mx=null,my=null,sx=innerWidth/2,sy=innerHeight/2,lastInfer=0,frames=0,fpsAt=performance.now(),clicks=0,winkStart=0,winkLatched=false,lastBlink=0,wasClosed=false,dwellStart=0,dwellAnchor=null;const pts=[[.1,.12],[.5,.12],[.9,.12],[.1,.5],[.5,.5],[.9,.5],[.1,.88],[.5,.88],[.9,.88]];function setStatus(t,ok=false){status.textContent=t;status.className="pill"+(ok?" ok":"")}function show(t,ms=2200){toast.textContent=t;toast.classList.add("show");setTimeout(()=>toast.classList.remove("show"),ms)}async function init(){try{const v=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm");setStatus("Loading face model…");landmarker=await Promise.race([FaceLandmarker.createFromOptions(v,{baseOptions:{modelAssetPath:"https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task?v=3",delegate:"CPU"},runningMode:"VIDEO",numFaces:1,outputFaceBlendshapes:true,minFaceDetectionConfidence:.5,minFacePresenceConfidence:.5,minTrackingConfidence:.5}),new Promise((_,r)=>setTimeout(()=>r(new Error("timeout")),20000))]);camera.disabled=false;setStatus("Model ready",true);show("Model ready. Tap Start camera.")}catch(e){console.error(e);setStatus("Model failed");show("Model failed or timed out. Reload in Chrome over HTTPS.",7000)}}async function startCam(){try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:"user",width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:60}}});video.srcObject=stream;await video.play();running=true;camera.disabled=true;camera.textContent="Camera active";calibrate.disabled=false;requestAnimationFrame(loop)}catch(e){show("Camera error: "+(e.name||"permission denied"),5000)}}function avg(lm,ids){let x=0,y=0;for(const i of ids){x+=lm[i].x;y+=lm[i].y}return{x:x/ids.length,y:y/ids.length}}function proj(p,a,b){const vx=b.x-a.x,vy=b.y-a.y,d=vx*vx+vy*vy||1e-6;return((p.x-a.x)*vx+(p.y-a.y)*vy)/d}function vr(p,t,b){const d=b.y-t.y;return Math.abs(d)<1e-5?.5:(p.y-t.y)/d}function features(res){const lm=res.faceLandmarks?.[0];if(!lm||lm.length<478)return null;const ia=avg(lm,[468,469,470,471,472]),ib=avg(lm,[473,474,475,476,477]);const ax=proj(ia,lm[33],lm[133]),ay=vr(ia,lm[159],lm[145]),bx=proj(ib,lm[362],lm[263]),by=vr(ib,lm[386],lm[374]);const mid={x:(lm[33].x+lm[263].x)/2,y:(lm[33].y+lm[263].y)/2},dist=Math.hypot(lm[263].x-lm[33].x,lm[263].y-lm[33].y)||1e-4,hx=(lm[1].x-mid.x)/dist,hy=(lm[1].y-mid.y)/dist;const bm={};for(const c of res.faceBlendshapes?.[0]?.categories||[])bm[c.categoryName]=c.score;blink={left:bm.eyeBlinkLeft||0,right:bm.eyeBlinkRight||0};const lx=(bm.eyeLookOutLeft||0)-(bm.eyeLookInLeft||0)+(bm.eyeLookInRight||0)-(bm.eyeLookOutRight||0),ly=(bm.eyeLookDownLeft||0)+(bm.eyeLookDownRight||0)-(bm.eyeLookUpLeft||0)-(bm.eyeLookUpRight||0),xx=(ax+bx)/2,yy=(ay+by)/2;return[1,ax,ay,bx,by,hx,hy,lx,ly,xx*xx,yy*yy,xx*yy,hx*xx,hy*yy]}function solve(A,b){const n=b.length,M=A.map((r,i)=>[...r,b[i]]);for(let c=0;c<n;c++){let p=c;for(let r=c+1;r<n;r++)if(Math.abs(M[r][c])>Math.abs(M[p][c]))p=r;[M[c],M[p]]=[M[p],M[c]];const d=M[c][c];if(Math.abs(d)<1e-10)continue;for(let j=c;j<=n;j++)M[c][j]/=d;for(let r=0;r<n;r++){if(r===c)continue;const f=M[r][c];for(let j=c;j<=n;j++)M[r][j]-=f*M[c][j]}}return M.map(r=>Number.isFinite(r[n])?r[n]:0)}function fit(X,Y,l=.015){const p=X[0].length,A=Array.from({length:p},()=>Array(p).fill(0)),b=Array(p).fill(0);for(let r=0;r<X.length;r++)for(let i=0;i<p;i++){b[i]+=X[r][i]*Y[r];for(let j=0;j<p;j++)A[i][j]+=X[r][i]*X[r][j]}for(let i=1;i<p;i++)A[i][i]+=l;return solve(A,b)}function pred(f,m){let s=0;for(let i=0;i<f.length;i++)s+=f[i]*m[i];return s}function clickAt(x,y){clicks++;$("clicks").textContent=clicks;cursor.style.display="none";const el=document.elementFromPoint(x,y);cursor.style.display="block";const hit=el?.closest("button,a,input,select,[role=button]");if(hit&&!hit.disabled&&hit!==camera&&hit!==calibrate&&hit!==$("full"))hit.click()}function clickSignals(now,x,y){if(mode.value==="wink"){const d=blink.left>.62&&blink.right<.42;if(d&&!winkStart)winkStart=now;if(d&&!winkLatched&&now-winkStart>190){winkLatched=true;clickAt(x,y)}if(!d){winkStart=0;winkLatched=false}}else if(mode.value==="double"){const c=blink.left>.58&&blink.right>.58;if(c&&!wasClosed){const dt=now-lastBlink;if(dt>100&&dt<650){clickAt(x,y);lastBlink=0}else lastBlink=now}wasClosed=c}else{if(!dwellAnchor||Math.hypot(x-dwellAnchor.x,y-dwellAnchor.y)>34){dwellAnchor={x,y};dwellStart=now}if(now-dwellStart>1000){clickAt(x,y);dwellStart=now+550;dwellAnchor={x,y}}}}function loop(now){if(!running)return;requestAnimationFrame(loop);if(!landmarker||video.readyState<2||now-lastInfer<33)return;lastInfer=now;try{const r=landmarker.detectForVideo(video,now);feat=features(r);$("face").textContent=feat?"Yes":"No";setStatus(feat?(calibrated?"Tracking":"Face locked"):"Find my face…",!!feat);if(feat&&calibrated&&!cal.classList.contains("show")){const px=Math.max(.015,Math.min(.985,pred(feat,mx))),py=Math.max(.02,Math.min(.98,pred(feat,my))),tx=px*innerWidth,ty=py*innerHeight,d=Math.hypot(tx-sx,ty-sy),a=Math.max(.16,Math.min(.5,.16+d/700));sx+=(tx-sx)*a;sy+=(ty-sy)*a;cursor.style.left=sx+"px";cursor.style.top=sy+"px";cursor.style.display="block";clickSignals(now,sx,sy)}}catch(e){console.warn(e)}frames++;if(now-fpsAt>=1000){$("fps").textContent=Math.round(frames*1000/(now-fpsAt));frames=0;fpsAt=now}}const sleep=ms=>new Promise(r=>setTimeout(r,ms));async function doCal(){if(!feat){show("I need a clear view of both eyes.");return}calibrated=false;$("calstate").textContent="No";calibrate.disabled=true;cal.classList.add("show");const X=[],xs=[],ys=[];for(let i=0;i<pts.length;i++){const[x,y]=pts[i];dotEl.style.left=x*100+"%";dotEl.style.top=y*100+"%";$("ctitle").textContent=`Point ${i+1} of 9`;await sleep(550);const end=performance.now()+700;while(performance.now()<end){if(feat){X.push([...feat]);xs.push(x);ys.push(y)}await sleep(45)}}if(X.length>70){mx=fit(X,xs);my=fit(X,ys);calibrated=true;$("calstate").textContent="Yes";show("Calibration complete. Look at a tile and wink.",3500)}else show("Calibration failed. Try again.",3500);cal.classList.remove("show");calibrate.disabled=false}document.querySelectorAll(".target").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".target.hit").forEach(x=>x.classList.remove("hit"));b.classList.add("hit");show("Clicked: "+b.childNodes[0].textContent.trim())}));camera.addEventListener("click",startCam);calibrate.addEventListener("click",doCal);$("full").addEventListener("click",async()=>{try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen?.();else await document.exitFullscreen?.()}catch{show("Fullscreen unavailable")}});init();</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d10">
+  <title>Gaze Mouse</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0b0d10;
+      color: #f5f7fb;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: #0b0d10; }
+    body { min-height: 100dvh; overflow-x: hidden; }
+    button, select { font: inherit; }
+    .app {
+      width: min(100%, 820px);
+      margin: 0 auto;
+      padding: max(16px, env(safe-area-inset-top)) 16px calc(118px + env(safe-area-inset-bottom));
+    }
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .brand h1 { font-size: clamp(26px, 6vw, 38px); line-height: 1; margin: 0 0 6px; }
+    .brand p { margin: 0; color: #9aa4b2; font-size: 13px; }
+    .pill {
+      flex: 0 0 auto;
+      max-width: 46vw;
+      padding: 8px 11px;
+      border-radius: 999px;
+      border: 1px solid #6a5a2f;
+      background: #211d11;
+      color: #ffe59a;
+      font-size: 11px;
+      line-height: 1.15;
+      text-align: center;
+    }
+    .pill.ok { background: #102019; color: #a7efc3; border-color: #2d6847; }
+    .pill.bad { background: #271313; color: #ffc1c1; border-color: #713b3b; }
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .card {
+      min-width: 0;
+      background: #13171d;
+      border: 1px solid #252c35;
+      border-radius: 18px;
+      padding: 10px;
+    }
+    .card label {
+      display: block;
+      color: #8994a3;
+      font-size: 10px;
+      margin: 0 0 7px 2px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    button, select {
+      width: 100%;
+      min-height: 52px;
+      border-radius: 13px;
+      border: 0;
+      padding: 10px 12px;
+    }
+    button {
+      background: #69d98c;
+      color: #07100a;
+      font-weight: 750;
+      cursor: pointer;
+    }
+    button.secondary { background: #242b34; color: #eef2f7; }
+    button:disabled { opacity: .42; cursor: default; }
+    select { background: #2b3038; color: #f3f5f8; }
+    .retry {
+      display: none;
+      margin-top: 9px;
+      min-height: 38px;
+      font-size: 12px;
+      background: #6e3e3e;
+      color: #fff;
+    }
+    .retry.show { display: block; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .metric {
+      min-width: 0;
+      padding: 10px 4px;
+      border: 1px solid #252c35;
+      border-radius: 14px;
+      text-align: center;
+      background: #0e1115;
+    }
+    .metric b { display: block; font-size: 18px; line-height: 1.1; }
+    .metric span { display: block; margin-top: 5px; color: #8994a3; font-size: 9px; }
+    .diag {
+      margin: 10px 2px 0;
+      min-height: 18px;
+      color: #8f9aa8;
+      font-size: 11px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    .testarea {
+      margin-top: 12px;
+      border: 1px solid #252c35;
+      border-radius: 20px;
+      padding: 12px;
+      min-height: 44vh;
+      background: #0e1115;
+    }
+    .instructions {
+      margin: 2px auto 12px;
+      max-width: 560px;
+      text-align: center;
+      color: #a8b1bf;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .targets {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 9px;
+    }
+    .target {
+      min-width: 0;
+      min-height: 78px;
+      background: #171c23;
+      color: #e8eef7;
+      border: 1px solid #303947;
+      overflow: hidden;
+    }
+    .target.hit { background: #244f35; border-color: #5de987; }
+    .target small { display: block; margin-top: 4px; color: #8b95a4; font-size: 9px; font-weight: 500; }
+    .privacy {
+      margin: 10px 2px 0;
+      color: #697382;
+      font-size: 10px;
+      line-height: 1.45;
+    }
+    video {
+      position: fixed;
+      z-index: 1200;
+      right: max(12px, env(safe-area-inset-right));
+      bottom: max(12px, env(safe-area-inset-bottom));
+      width: min(28vw, 122px);
+      aspect-ratio: 3 / 4;
+      object-fit: cover;
+      border-radius: 16px;
+      border: 1px solid #3b4553;
+      transform: scaleX(-1);
+      background: #000;
+      box-shadow: 0 8px 30px #0008;
+    }
+    .cursor {
+      position: fixed;
+      z-index: 1500;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 3px solid #fff;
+      background: #69d98c55;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      display: none;
+      box-shadow: 0 0 0 7px #69d98c22;
+    }
+    .cursor::after {
+      content: "";
+      position: absolute;
+      inset: 9px;
+      border-radius: 50%;
+      background: #69d98c;
+    }
+    .calibration {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      background: #07090cf5;
+      display: none;
+    }
+    .calibration.show { display: block; }
+    .cal-dot {
+      position: absolute;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: #69d98c;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 0 18px #69d98c18;
+    }
+    .cal-dot::after {
+      content: "";
+      position: absolute;
+      inset: 9px;
+      border-radius: 50%;
+      background: #061009;
+    }
+    .cal-copy {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: min(88vw, 430px);
+      transform: translate(-50%, -50%);
+      text-align: center;
+      pointer-events: none;
+    }
+    .cal-copy b { display: block; font-size: 17px; margin-bottom: 6px; }
+    .cal-copy span { color: #9aa4b2; font-size: 12px; }
+    .toast {
+      position: fixed;
+      z-index: 3000;
+      left: 50%;
+      bottom: max(18px, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      max-width: calc(100vw - 30px);
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid #384250;
+      background: #202731;
+      color: #edf3fb;
+      font-size: 12px;
+      text-align: center;
+      display: none;
+    }
+    .toast.show { display: block; }
+
+    @media (max-width: 430px) {
+      .app { padding-left: 12px; padding-right: 12px; }
+      .topbar { align-items: center; }
+      .brand h1 { font-size: 28px; }
+      .controls { gap: 8px; }
+      .card { padding: 8px; border-radius: 16px; }
+      button, select { min-height: 48px; font-size: 14px; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .target { min-height: 70px; font-size: 13px; padding: 8px 4px; }
+      .testarea { min-height: 42vh; padding: 10px; }
+    }
+
+    @media (min-width: 720px) {
+      .controls { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .metrics { margin-top: 14px; }
+      .target { min-height: 92px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="topbar">
+      <div class="brand">
+        <h1>Gaze Mouse</h1>
+        <p>Phone-camera eye tracking prototype</p>
+      </div>
+      <div id="status" class="pill">Loading tracker…</div>
+    </div>
+
+    <section class="controls">
+      <div class="card">
+        <label>Camera</label>
+        <button id="cameraBtn">Start camera</button>
+      </div>
+      <div class="card">
+        <label>Calibration</label>
+        <button id="calibrateBtn" class="secondary" disabled>9-point calibrate</button>
+      </div>
+      <div class="card">
+        <label>Click signal</label>
+        <select id="clickMode">
+          <option value="dwell">Dwell 0.9 sec</option>
+          <option value="wink">Left wink</option>
+          <option value="doubleblink">Double blink</option>
+        </select>
+      </div>
+      <div class="card">
+        <label>Display</label>
+        <button id="fullscreenBtn" class="secondary">Fullscreen</button>
+        <button id="retryBtn" class="retry">Retry tracker</button>
+      </div>
+    </section>
+
+    <section class="metrics">
+      <div class="metric"><b id="fps">0</b><span>FPS</span></div>
+      <div class="metric"><b id="face">No</b><span>Face</span></div>
+      <div class="metric"><b id="calState">No</b><span>Calibrated</span></div>
+      <div class="metric"><b id="clicks">0</b><span>Clicks</span></div>
+    </section>
+
+    <div id="diag" class="diag">The camera can start while the tracker is loading.</div>
+
+    <section class="testarea">
+      <div class="instructions">After calibration, look at a tile. Start with dwell click; wink and double-blink can be tested after tracking is stable.</div>
+      <div class="targets">
+        <button class="target">Mail<small>Target 1</small></button>
+        <button class="target">Search<small>Target 2</small></button>
+        <button class="target">Music<small>Target 3</small></button>
+        <button class="target">Back<small>Target 4</small></button>
+        <button class="target">Confirm<small>Target 5</small></button>
+        <button class="target">Next<small>Target 6</small></button>
+        <button class="target">Open<small>Target 7</small></button>
+        <button class="target">Run<small>Target 8</small></button>
+        <button class="target">Stop<small>Target 9</small></button>
+      </div>
+    </section>
+
+    <p class="privacy">Camera frames are processed in your browser. The MediaPipe runtime and face model are loaded from public CDNs.</p>
+  </main>
+
+  <video id="video" playsinline muted autoplay></video>
+  <div id="cursor" class="cursor" aria-hidden="true"></div>
+
+  <div id="calibration" class="calibration">
+    <div id="calDot" class="cal-dot"></div>
+    <div class="cal-copy">
+      <b id="calTitle">Calibration</b>
+      <span id="calHint">Keep your head roughly still and look at the green point.</span>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script type="module">
+    const $ = (id) => document.getElementById(id);
+    const video = $("video");
+    const statusEl = $("status");
+    const diagEl = $("diag");
+    const cameraBtn = $("cameraBtn");
+    const calibrateBtn = $("calibrateBtn");
+    const fullscreenBtn = $("fullscreenBtn");
+    const retryBtn = $("retryBtn");
+    const clickMode = $("clickMode");
+    const cursor = $("cursor");
+    const calibration = $("calibration");
+    const calDot = $("calDot");
+    const calTitle = $("calTitle");
+    const calHint = $("calHint");
+    const toast = $("toast");
+
+    let faceLandmarker = null;
+    let trackerReady = false;
+    let trackerLoading = false;
+    let trackerVersion = "";
+    let stream = null;
+    let running = false;
+    let calibrated = false;
+    let latestFeatures = null;
+    let latestBlink = { left: 0, right: 0 };
+    let modelX = null;
+    let modelY = null;
+    let smoothX = innerWidth / 2;
+    let smoothY = innerHeight / 2;
+    let lastInference = 0;
+    let frames = 0;
+    let fpsStart = performance.now();
+    let clicks = 0;
+    let winkStarted = 0;
+    let winkLatched = false;
+    let blinkWasClosed = false;
+    let lastBlinkAt = 0;
+    let dwellAnchor = null;
+    let dwellStarted = 0;
+    let toastTimer = null;
+
+    const CAL_POINTS = [
+      [0.10, 0.12], [0.50, 0.12], [0.90, 0.12],
+      [0.10, 0.50], [0.50, 0.50], [0.90, 0.50],
+      [0.10, 0.88], [0.50, 0.88], [0.90, 0.88]
+    ];
+
+    function setStatus(text, mode = "") {
+      statusEl.textContent = text;
+      statusEl.className = "pill" + (mode ? " " + mode : "");
+    }
+
+    function setDiag(text) {
+      diagEl.textContent = text;
+    }
+
+    function showToast(text, ms = 2400) {
+      toast.textContent = text;
+      toast.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove("show"), ms);
+    }
+
+    function withTimeout(promise, ms, label) {
+      let timer;
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(label + " timed out")), ms);
+      });
+      return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+    }
+
+    async function importVision() {
+      const attempts = [
+        {
+          version: "0.10.35",
+          url: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/+esm"
+        },
+        {
+          version: "0.10.35",
+          url: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/vision_bundle.js"
+        },
+        {
+          version: "0.10.22",
+          url: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm"
+        }
+      ];
+
+      let lastError = new Error("No tracker source responded");
+      for (const source of attempts) {
+        try {
+          setDiag("Trying MediaPipe " + source.version + "…");
+          const imported = await withTimeout(import(source.url), 9000, "Library import");
+          const mod = imported.default && imported.default.FaceLandmarker ? imported.default : imported;
+          if (mod.FaceLandmarker && mod.FilesetResolver) {
+            return { mod, version: source.version };
+          }
+          throw new Error("MediaPipe exports were not found");
+        } catch (error) {
+          lastError = error;
+          console.warn("Tracker source failed:", source.url, error);
+        }
+      }
+      throw lastError;
+    }
+
+    async function initTracker() {
+      if (trackerLoading) return;
+      trackerLoading = true;
+      trackerReady = false;
+      retryBtn.classList.remove("show");
+      setStatus("Loading tracker…");
+      setDiag("Loading eye/face tracking library…");
+
+      try {
+        const loaded = await importVision();
+        const FaceLandmarker = loaded.mod.FaceLandmarker;
+        const FilesetResolver = loaded.mod.FilesetResolver;
+        trackerVersion = loaded.version;
+
+        setDiag("Loading MediaPipe WASM…");
+        const vision = await withTimeout(
+          FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@" + trackerVersion + "/wasm"
+          ),
+          12000,
+          "WASM load"
+        );
+
+        setDiag("Loading face model…");
+        faceLandmarker = await withTimeout(
+          FaceLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+              delegate: "CPU"
+            },
+            runningMode: "VIDEO",
+            numFaces: 1,
+            outputFaceBlendshapes: true,
+            outputFacialTransformationMatrixes: false,
+            minFaceDetectionConfidence: 0.5,
+            minFacePresenceConfidence: 0.5,
+            minTrackingConfidence: 0.5
+          }),
+          25000,
+          "Face model load"
+        );
+
+        trackerReady = true;
+        setStatus(running ? "Find my face…" : "Tracker ready", "ok");
+        setDiag("Tracker ready. Version " + trackerVersion + ". " + (running ? "Keep your full face visible." : "Tap Start camera."));
+        showToast("Tracker ready.", 1800);
+        if (running) requestAnimationFrame(loop);
+      } catch (error) {
+        console.error("Tracker initialization failed", error);
+        faceLandmarker = null;
+        trackerReady = false;
+        setStatus("Tracker failed", "bad");
+        setDiag("Tracker error: " + (error && error.message ? error.message : String(error)));
+        retryBtn.classList.add("show");
+        showToast("Tracker failed. Tap Retry tracker.", 4500);
+      } finally {
+        trackerLoading = false;
+      }
+    }
+
+    async function startCamera() {
+      if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setDiag("Camera requires HTTPS and a browser with getUserMedia.");
+        showToast("Open this HTTPS page in Chrome and allow camera access.", 5000);
+        return;
+      }
+
+      try {
+        if (stream) stream.getTracks().forEach((track) => track.stop());
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: "user",
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 30, max: 30 }
+          }
+        });
+        video.srcObject = stream;
+        await video.play();
+        running = true;
+        cameraBtn.textContent = "Camera active";
+        cameraBtn.disabled = true;
+        setDiag(trackerReady ? "Camera on. Finding your face…" : "Camera on. Tracker is still loading…");
+        setStatus(trackerReady ? "Find my face…" : "Camera on · loading");
+        if (!trackerReady && !trackerLoading) initTracker();
+        if (trackerReady) requestAnimationFrame(loop);
+      } catch (error) {
+        console.error("Camera failed", error);
+        setDiag("Camera error: " + (error && error.name ? error.name : String(error)));
+        showToast("Camera error: " + (error && error.name ? error.name : "permission denied"), 5000);
+      }
+    }
+
+    function pointAverage(landmarks, ids) {
+      let x = 0;
+      let y = 0;
+      for (const id of ids) {
+        x += landmarks[id].x;
+        y += landmarks[id].y;
+      }
+      return { x: x / ids.length, y: y / ids.length };
+    }
+
+    function projectRatio(point, a, b) {
+      const vx = b.x - a.x;
+      const vy = b.y - a.y;
+      const lengthSquared = vx * vx + vy * vy || 1e-6;
+      return ((point.x - a.x) * vx + (point.y - a.y) * vy) / lengthSquared;
+    }
+
+    function verticalRatio(point, top, bottom) {
+      const dy = bottom.y - top.y;
+      return Math.abs(dy) < 1e-5 ? 0.5 : (point.y - top.y) / dy;
+    }
+
+    function blendshapeMap(result) {
+      const map = {};
+      const categories = result.faceBlendshapes && result.faceBlendshapes[0]
+        ? result.faceBlendshapes[0].categories || []
+        : [];
+      for (const category of categories) map[category.categoryName] = category.score;
+      return map;
+    }
+
+    function extractFeatures(result) {
+      const lm = result.faceLandmarks && result.faceLandmarks[0];
+      if (!lm || lm.length < 478) return null;
+
+      const irisA = pointAverage(lm, [468, 469, 470, 471, 472]);
+      const irisB = pointAverage(lm, [473, 474, 475, 476, 477]);
+
+      const eyeAX = projectRatio(irisA, lm[33], lm[133]);
+      const eyeAY = verticalRatio(irisA, lm[159], lm[145]);
+      const eyeBX = projectRatio(irisB, lm[362], lm[263]);
+      const eyeBY = verticalRatio(irisB, lm[386], lm[374]);
+
+      const eyeMidX = (lm[33].x + lm[263].x) / 2;
+      const eyeMidY = (lm[33].y + lm[263].y) / 2;
+      const eyeDistance = Math.hypot(lm[263].x - lm[33].x, lm[263].y - lm[33].y) || 1e-4;
+      const headX = (lm[1].x - eyeMidX) / eyeDistance;
+      const headY = (lm[1].y - eyeMidY) / eyeDistance;
+
+      const blend = blendshapeMap(result);
+      latestBlink = {
+        left: blend.eyeBlinkLeft || 0,
+        right: blend.eyeBlinkRight || 0
+      };
+
+      const lookX =
+        (blend.eyeLookOutLeft || 0) - (blend.eyeLookInLeft || 0) +
+        (blend.eyeLookInRight || 0) - (blend.eyeLookOutRight || 0);
+      const lookY =
+        (blend.eyeLookDownLeft || 0) + (blend.eyeLookDownRight || 0) -
+        (blend.eyeLookUpLeft || 0) - (blend.eyeLookUpRight || 0);
+
+      const avgX = (eyeAX + eyeBX) / 2;
+      const avgY = (eyeAY + eyeBY) / 2;
+
+      return [
+        1,
+        eyeAX, eyeAY, eyeBX, eyeBY,
+        headX, headY, lookX, lookY,
+        avgX * avgX,
+        avgY * avgY,
+        avgX * avgY,
+        headX * avgX,
+        headY * avgY
+      ];
+    }
+
+    function dotProduct(a, b) {
+      let sum = 0;
+      for (let i = 0; i < a.length; i++) sum += a[i] * b[i];
+      return sum;
+    }
+
+    function solveLinear(A, b) {
+      const n = b.length;
+      const M = A.map((row, i) => row.concat(b[i]));
+
+      for (let col = 0; col < n; col++) {
+        let pivot = col;
+        for (let row = col + 1; row < n; row++) {
+          if (Math.abs(M[row][col]) > Math.abs(M[pivot][col])) pivot = row;
+        }
+
+        const tmp = M[col];
+        M[col] = M[pivot];
+        M[pivot] = tmp;
+
+        const divisor = M[col][col];
+        if (Math.abs(divisor) < 1e-10) continue;
+
+        for (let c = col; c <= n; c++) M[col][c] /= divisor;
+
+        for (let row = 0; row < n; row++) {
+          if (row === col) continue;
+          const factor = M[row][col];
+          for (let c = col; c <= n; c++) M[row][c] -= factor * M[col][c];
+        }
+      }
+
+      return M.map((row) => Number.isFinite(row[n]) ? row[n] : 0);
+    }
+
+    function ridgeFit(samples, targets, lambda = 0.015) {
+      const p = samples[0].length;
+      const A = Array.from({ length: p }, () => Array(p).fill(0));
+      const b = Array(p).fill(0);
+
+      for (let r = 0; r < samples.length; r++) {
+        const x = samples[r];
+        const y = targets[r];
+        for (let i = 0; i < p; i++) {
+          b[i] += x[i] * y;
+          for (let j = 0; j < p; j++) A[i][j] += x[i] * x[j];
+        }
+      }
+
+      for (let i = 1; i < p; i++) A[i][i] += lambda;
+      return solveLinear(A, b);
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function triggerVirtualClick(x, y) {
+      clicks += 1;
+      $("clicks").textContent = String(clicks);
+
+      cursor.style.display = "none";
+      const target = document.elementFromPoint(x, y);
+      cursor.style.display = "block";
+
+      if (!target) return;
+      const clickable = target.closest("button, a, input, select, [role='button']");
+      if (
+        clickable &&
+        !clickable.disabled &&
+        clickable !== cameraBtn &&
+        clickable !== calibrateBtn &&
+        clickable !== fullscreenBtn &&
+        clickable !== retryBtn
+      ) {
+        clickable.click();
+      }
+    }
+
+    function handleClickSignal(now, x, y) {
+      const left = latestBlink.left;
+      const right = latestBlink.right;
+
+      if (clickMode.value === "wink") {
+        const deliberate = left > 0.62 && right < 0.42;
+        if (deliberate && !winkStarted) winkStarted = now;
+        if (deliberate && !winkLatched && now - winkStarted > 190) {
+          winkLatched = true;
+          triggerVirtualClick(x, y);
+        }
+        if (!deliberate) {
+          winkStarted = 0;
+          winkLatched = false;
+        }
+        return;
+      }
+
+      if (clickMode.value === "doubleblink") {
+        const closed = left > 0.58 && right > 0.58;
+        if (closed && !blinkWasClosed) {
+          const delta = now - lastBlinkAt;
+          if (delta > 100 && delta < 650) {
+            triggerVirtualClick(x, y);
+            lastBlinkAt = 0;
+          } else {
+            lastBlinkAt = now;
+          }
+        }
+        blinkWasClosed = closed;
+        return;
+      }
+
+      if (!dwellAnchor || Math.hypot(x - dwellAnchor.x, y - dwellAnchor.y) > 32) {
+        dwellAnchor = { x, y };
+        dwellStarted = now;
+      }
+
+      if (now - dwellStarted > 900) {
+        triggerVirtualClick(x, y);
+        dwellAnchor = { x, y };
+        dwellStarted = now + 550;
+      }
+    }
+
+    function updateCursor(feature, now) {
+      if (!modelX || !modelY) return;
+
+      const normalizedX = clamp(dotProduct(feature, modelX), 0.015, 0.985);
+      const normalizedY = clamp(dotProduct(feature, modelY), 0.02, 0.98);
+      const targetX = normalizedX * innerWidth;
+      const targetY = normalizedY * innerHeight;
+
+      const distance = Math.hypot(targetX - smoothX, targetY - smoothY);
+      const alpha = clamp(0.16 + distance / 700, 0.16, 0.50);
+
+      smoothX += (targetX - smoothX) * alpha;
+      smoothY += (targetY - smoothY) * alpha;
+
+      cursor.style.left = smoothX + "px";
+      cursor.style.top = smoothY + "px";
+      cursor.style.display = "block";
+
+      handleClickSignal(now, smoothX, smoothY);
+    }
+
+    function loop(now) {
+      if (!running || !trackerReady || !faceLandmarker) return;
+      requestAnimationFrame(loop);
+
+      if (video.readyState < 2 || now - lastInference < 45) return;
+      lastInference = now;
+
+      try {
+        const result = faceLandmarker.detectForVideo(video, now);
+        latestFeatures = extractFeatures(result);
+        const faceSeen = Boolean(latestFeatures);
+        $("face").textContent = faceSeen ? "Yes" : "No";
+
+        if (faceSeen) {
+          setStatus(calibrated ? "Tracking" : "Face locked", "ok");
+          setDiag(calibrated ? "Tracking gaze. Move only your eyes as much as possible." : "Face found. Tap 9-point calibrate.");
+          calibrateBtn.disabled = false;
+        } else {
+          setStatus("Find my face…");
+          setDiag("Keep both eyes and your full face inside the camera preview.");
+          calibrateBtn.disabled = true;
+          cursor.style.display = "none";
+        }
+
+        if (faceSeen && calibrated && !calibration.classList.contains("show")) {
+          updateCursor(latestFeatures, now);
+        }
+      } catch (error) {
+        console.warn("Frame inference failed", error);
+      }
+
+      frames += 1;
+      if (now - fpsStart >= 1000) {
+        $("fps").textContent = String(Math.round(frames * 1000 / (now - fpsStart)));
+        fpsStart = now;
+        frames = 0;
+      }
+    }
+
+    function sleep(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    async function calibrate() {
+      if (!latestFeatures) {
+        showToast("I need a clear view of both eyes first.", 2800);
+        return;
+      }
+
+      calibrated = false;
+      $("calState").textContent = "No";
+      calibrateBtn.disabled = true;
+      cursor.style.display = "none";
+      calibration.classList.add("show");
+
+      const samples = [];
+      const xs = [];
+      const ys = [];
+
+      try {
+        for (let i = 0; i < CAL_POINTS.length; i++) {
+          const point = CAL_POINTS[i];
+          const x = point[0];
+          const y = point[1];
+
+          calDot.style.left = (x * 100) + "%";
+          calDot.style.top = (y * 100) + "%";
+          calTitle.textContent = "Point " + (i + 1) + " of 9";
+          calHint.textContent = "Keep your head roughly still. Look directly at the green point.";
+
+          await sleep(500);
+          const end = performance.now() + 720;
+
+          while (performance.now() < end) {
+            if (latestFeatures) {
+              samples.push(latestFeatures.slice());
+              xs.push(x);
+              ys.push(y);
+            }
+            await sleep(40);
+          }
+        }
+
+        if (samples.length < 80) throw new Error("Not enough valid eye samples");
+
+        modelX = ridgeFit(samples, xs);
+        modelY = ridgeFit(samples, ys);
+        calibrated = true;
+        $("calState").textContent = "Yes";
+        smoothX = innerWidth / 2;
+        smoothY = innerHeight / 2;
+        dwellAnchor = null;
+        dwellStarted = 0;
+        showToast("Calibration complete. Start by testing dwell click.", 3600);
+      } catch (error) {
+        console.error("Calibration failed", error);
+        showToast("Calibration failed. Keep your whole face visible and retry.", 3800);
+      } finally {
+        calibration.classList.remove("show");
+        calibrateBtn.disabled = !latestFeatures;
+      }
+    }
+
+    document.querySelectorAll(".target").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".target.hit").forEach((item) => item.classList.remove("hit"));
+        button.classList.add("hit");
+        showToast("Clicked: " + button.childNodes[0].textContent.trim(), 1400);
+      });
+    });
+
+    cameraBtn.addEventListener("click", startCamera);
+    calibrateBtn.addEventListener("click", calibrate);
+    retryBtn.addEventListener("click", initTracker);
+
+    clickMode.addEventListener("change", () => {
+      winkStarted = 0;
+      winkLatched = false;
+      blinkWasClosed = false;
+      lastBlinkAt = 0;
+      dwellAnchor = null;
+      dwellStarted = 0;
+      showToast("Click mode: " + clickMode.options[clickMode.selectedIndex].text, 1800);
+    });
+
+    fullscreenBtn.addEventListener("click", async () => {
+      try {
+        if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        } else if (document.fullscreenElement && document.exitFullscreen) {
+          await document.exitFullscreen();
+        }
+      } catch (error) {
+        showToast("Fullscreen is not available in this browser.", 2500);
+      }
+    });
+
+    window.addEventListener("resize", () => {
+      smoothX = clamp(smoothX, 0, innerWidth);
+      smoothY = clamp(smoothY, 0, innerHeight);
+    });
+
+    window.addEventListener("orientationchange", () => {
+      if (calibrated) {
+        calibrated = false;
+        $("calState").textContent = "No";
+        modelX = null;
+        modelY = null;
+        cursor.style.display = "none";
+        showToast("Screen rotated. Please calibrate again.", 3000);
+      }
+    });
+
+    window.addEventListener("error", (event) => {
+      if (!trackerReady && event.message) setDiag("Page error: " + event.message);
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+      if (!trackerReady && event.reason) {
+        const message = event.reason.message || String(event.reason);
+        setDiag("Tracker error: " + message);
+      }
+    });
+
+    initTracker();
+  </script>
+</body>
+</html>
