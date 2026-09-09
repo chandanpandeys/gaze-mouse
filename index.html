@@ -6,95 +6,459 @@
 <meta name="theme-color" content="#0b0d10">
 <title>Gaze Mouse</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#0b0d10;color:#f5f7fb;font:14px system-ui,-apple-system,Segoe UI,sans-serif}body{min-height:100dvh}.app{max-width:860px;margin:auto;padding:16px 14px 128px}.top{display:flex;justify-content:space-between;gap:12px;align-items:center}.top h1{margin:0;font-size:30px}.muted{color:#99a4b3}.pill{padding:8px 11px;border-radius:999px;background:#211d11;color:#ffe59a;border:1px solid #6b5a2f;font-size:11px;white-space:nowrap}.pill.ok{background:#102019;color:#a7efc3;border-color:#2d6847}.pill.bad{background:#271313;color:#ffc1c1;border-color:#713b3b}.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:14px 0}.card,.panel{background:#11151a;border:1px solid #29313b;border-radius:16px;padding:10px}label{display:block;font-size:10px;color:#8994a3;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}button,select{width:100%;min-height:48px;border:0;border-radius:12px;font:inherit}button{background:#69d98c;color:#07100a;font-weight:750}button.secondary{background:#252c35;color:#f3f6fb}button:disabled{opacity:.4}select{background:#2b3038;color:#fff;padding:8px}.metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}.metric{text-align:center;padding:9px 2px;border:1px solid #29313b;border-radius:12px;background:#0e1115;min-width:0}.metric b{display:block;font-size:16px;white-space:nowrap}.metric span{display:block;font-size:9px;color:#8994a3;margin-top:4px}.diag{font-size:11px;color:#9ba6b4;line-height:1.45;margin:10px 2px}.panel{margin-top:10px}.guide{line-height:1.55;color:#c5ced9}.guide strong{color:#fff}.letters{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:5px}.letter{height:36px;display:grid;place-items:center;background:#171c23;border:1px solid #303947;border-radius:7px;font-weight:800;transition:.12s}.letter.focus{outline:2px solid #69d98c;background:#183322}.cursor{position:fixed;z-index:1500;width:26px;height:26px;border:2px solid #fff;border-radius:50%;background:#69d98c44;transform:translate(-50%,-50%);pointer-events:none;display:none;box-shadow:0 0 0 6px #69d98c18}.cursor:after{content:"";position:absolute;inset:7px;background:#69d98c;border-radius:50%}video{position:fixed;z-index:1200;right:10px;bottom:10px;width:108px;aspect-ratio:3/4;object-fit:cover;transform:scaleX(-1);border-radius:14px;border:1px solid #3b4553;background:#000}.cal{position:fixed;inset:0;z-index:2000;background:#07090cf7;display:none}.cal.show{display:block}.dot{position:absolute;width:26px;height:26px;border-radius:50%;background:#69d98c;transform:translate(-50%,-50%);box-shadow:0 0 0 17px #69d98c22}.dot:after{content:"";position:absolute;inset:8px;background:#061009;border-radius:50%}.copy{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:88vw;max-width:470px;text-align:center}.copy b{font-size:18px}.copy div{margin-top:8px;line-height:1.45}.rest{font-size:12px;color:#c6d0dc}.toast{position:fixed;z-index:3000;left:50%;bottom:22px;transform:translateX(-50%);background:#202731;border:1px solid #384250;border-radius:999px;padding:10px 14px;display:none;max-width:92vw;text-align:center}.toast.show{display:block}.switch{display:flex;align-items:center;gap:8px;font-size:12px;color:#cbd4df;margin-top:8px}.switch input{width:18px;height:18px}.quality{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.quality .tag{font-size:10px;border:1px solid #34404d;border-radius:999px;padding:5px 8px;color:#aeb8c5}@media(max-width:620px){.metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.letters{grid-template-columns:repeat(6,minmax(0,1fr))}.top h1{font-size:28px}}@media(min-width:760px){.controls{grid-template-columns:repeat(4,minmax(0,1fr))}}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#0b0d10;color:#f5f7fb;font:14px system-ui,-apple-system,Segoe UI,sans-serif}body{min-height:100dvh}.app{max-width:860px;margin:auto;padding:16px 14px 128px}.top{display:flex;justify-content:space-between;gap:12px;align-items:center}.top h1{margin:0;font-size:30px}.muted{color:#99a4b3}.pill{padding:8px 11px;border-radius:999px;background:#211d11;color:#ffe59a;border:1px solid #6b5a2f;font-size:11px;white-space:nowrap}.pill.ok{background:#102019;color:#a7efc3;border-color:#2d6847}.pill.bad{background:#271313;color:#ffc1c1;border-color:#713b3b}.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:14px 0}.card,.panel{background:#11151a;border:1px solid #29313b;border-radius:16px;padding:10px}label{display:block;font-size:10px;color:#8994a3;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}button,select{width:100%;min-height:48px;border:0;border-radius:12px;font:inherit}button{background:#69d98c;color:#07100a;font-weight:750}button.secondary{background:#252c35;color:#f3f6fb}button:disabled{opacity:.4}select{background:#2b3038;color:#fff;padding:8px}.metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}.metric{text-align:center;padding:9px 2px;border:1px solid #29313b;border-radius:12px;background:#0e1115;min-width:0}.metric b{display:block;font-size:16px;white-space:nowrap}.metric span{display:block;font-size:9px;color:#8994a3;margin-top:4px}.diag{font-size:11px;color:#9ba6b4;line-height:1.45;margin:10px 2px}.panel{margin-top:10px}.guide{line-height:1.58;color:#c5ced9}.guide strong{color:#fff}.settings{display:grid;grid-template-columns:1fr 1fr;gap:8px}.switch{display:flex;align-items:center;gap:8px;font-size:12px;color:#cbd4df}.switch input{width:18px;height:18px;flex:0 0 auto}.letters{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:5px}.letter{height:36px;display:grid;place-items:center;background:#171c23;border:1px solid #303947;border-radius:7px;font-weight:800;transition:.12s}.letter.focus{outline:2px solid #69d98c;background:#183322}.cursor{position:fixed;z-index:1500;width:26px;height:26px;border:2px solid #fff;border-radius:50%;background:#69d98c44;transform:translate(-50%,-50%);pointer-events:none;display:none;box-shadow:0 0 0 6px #69d98c18}.cursor:after{content:"";position:absolute;inset:7px;background:#69d98c;border-radius:50%}video{position:fixed;z-index:1200;right:10px;bottom:10px;width:108px;aspect-ratio:3/4;object-fit:cover;transform:scaleX(-1);border-radius:14px;border:1px solid #3b4553;background:#000}.cal{position:fixed;inset:0;z-index:2000;background:#07090cf8;display:none}.cal.show{display:block}.dot{position:absolute;width:28px;height:28px;border-radius:50%;background:#69d98c;transform:translate(-50%,-50%);box-shadow:0 0 0 18px #69d98c22}.dot:after{content:"";position:absolute;inset:9px;background:#061009;border-radius:50%}.copy{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:88vw;max-width:500px;text-align:center;pointer-events:none}.copy b{display:block;font-size:20px;margin-bottom:8px}.copy div{line-height:1.45}.rest{font-size:12px;color:#c6d0dc;margin-top:8px}.progress{position:absolute;left:8vw;right:8vw;bottom:8vh;height:5px;background:#20262e;border-radius:999px;overflow:hidden}.progress>div{height:100%;width:0;background:#69d98c;transition:width .12s linear}.toast{position:fixed;z-index:3000;left:50%;bottom:22px;transform:translateX(-50%);background:#202731;border:1px solid #384250;border-radius:999px;padding:10px 14px;display:none;max-width:92vw;text-align:center}.toast.show{display:block}.quality{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.tag{font-size:10px;border:1px solid #34404d;border-radius:999px;padding:5px 8px;color:#aeb8c5}@media(max-width:620px){.metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.letters{grid-template-columns:repeat(6,minmax(0,1fr))}.top h1{font-size:28px}.settings{grid-template-columns:1fr}}@media(min-width:760px){.controls{grid-template-columns:repeat(4,minmax(0,1fr))}}
 </style>
 </head>
 <body>
 <main class="app">
-  <div class="top"><div><h1>Gaze Mouse</h1><div class="muted">Full-face + eye gaze tracking</div></div><div id="status" class="pill">Loading tracker…</div></div>
+  <div class="top">
+    <div><h1>Gaze Mouse</h1><div class="muted">Eye-dominant full-face gaze tracking</div></div>
+    <div id="status" class="pill">Loading tracker…</div>
+  </div>
+
   <section class="controls">
     <div class="card"><label>Camera</label><button id="cam">Start camera</button></div>
-    <div class="card"><label>Calibration</label><button id="calBtn" class="secondary" disabled>Smooth sweep calibrate</button></div>
-    <div class="card"><label>Click</label><select id="mode"><option value="dwell">Dwell 1.2 sec</option><option value="wink">Left wink</option><option value="double">Double blink</option></select></div>
+    <div class="card"><label>Calibration</label><button id="calBtn" class="secondary" disabled>Guided slow calibrate</button></div>
+    <div class="card"><label>Click</label><select id="mode"><option value="dwell">Dwell 1.25 sec</option><option value="wink">Left wink</option><option value="double">Double blink</option></select></div>
     <div class="card"><label>Display</label><button id="full" class="secondary">Fullscreen</button></div>
   </section>
+
   <section class="metrics">
     <div class="metric"><b id="fps">0</b><span>FPS</span></div>
     <div class="metric"><b id="face">No</b><span>Face</span></div>
     <div class="metric"><b id="pose">—</b><span>Head pose</span></div>
     <div class="metric"><b id="calState">No</b><span>Calibrated</span></div>
-    <div class="metric"><b id="err">—</b><span>Validation</span></div>
+    <div class="metric"><b id="err">—</b><span>Fit error</span></div>
     <div class="metric"><b id="clicks">0</b><span>Clicks</span></div>
   </section>
+
   <div id="diag" class="diag">The camera can start while the tracker loads.</div>
+
   <section class="panel guide">
-    <strong>Continuous low-stress calibration</strong><br>
-    Calibration now uses smooth moving sweeps instead of stopping at dozens of dots. It records hundreds of gaze samples while the target moves, so calibration cannot get stuck when you look toward the bottom of the screen. The model uses iris position, the full eyelid contour, eye opening, eye-corner geometry, eye-look signals and head pose together.<br><br>
-    Fix the phone in portrait, roughly 35–45 cm away. Keep the phone still and use front lighting. Follow the green target naturally with your eyes. You may blink normally; blink frames are ignored instead of forcing a retry.
-    <label class="switch"><input id="assist" type="checkbox" checked> Precision assist: when gaze is stable near a letter/button, settle on its center.</label>
+    <strong>Calibration is deliberately slow now.</strong><br>
+    After you tap calibration, the target does <b>not</b> move immediately. You get a prepare screen, then a practice sweep, then the real calibration. Every real sweep first holds still at its starting point before it moves. The moving target is much slower, and calibration compensates for the natural delay between the target moving and your eyes following it.<br><br>
+    Keep the phone fixed in portrait, roughly 35–45 cm away. Follow the green dot naturally; do not chase it. Blink whenever needed — blink frames are ignored. If your eyes lose it, simply find the dot again; the calibration never waits for a perfect frame.
   </section>
-  <section class="panel"><div class="quality"><span class="tag" id="sourceTag">Tracker source: loading</span><span class="tag" id="sampleTag">Calibration: ready</span><span class="tag" id="stableTag">Stability: —</span></div></section>
-  <section class="panel"><div class="muted" style="text-align:center;margin-bottom:9px">Letter precision test — hold your gaze on one character</div><div class="letters" id="letters"></div></section>
+
+  <section class="panel settings">
+    <label class="switch"><input id="assist" type="checkbox" checked> Precision assist near letters/buttons</label>
+    <div><label>Calibration pace</label><select id="pace"><option value="relaxed" selected>Relaxed</option><option value="very-slow">Very slow</option></select></div>
+  </section>
+
+  <section class="panel">
+    <div class="quality">
+      <span class="tag" id="sourceTag">Tracker source: loading</span>
+      <span class="tag" id="sampleTag">Calibration: ready</span>
+      <span class="tag" id="stableTag">Cursor stability: —</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="muted" style="text-align:center;margin-bottom:9px">Letter precision test — look at one character and hold</div>
+    <div class="letters" id="letters"></div>
+  </section>
 </main>
-<video id="video" playsinline muted autoplay></video><div id="cursor" class="cursor"></div>
-<div id="cal" class="cal"><div id="dot" class="dot"></div><div class="copy"><b id="ct">Calibration</b><div id="ch" class="muted">Look naturally at the green point.</div><div id="rest" class="rest"></div></div></div>
+
+<video id="video" playsinline muted autoplay></video>
+<div id="cursor" class="cursor"></div>
+
+<div id="cal" class="cal">
+  <div id="dot" class="dot"></div>
+  <div class="copy">
+    <b id="ct">Calibration</b>
+    <div id="ch" class="muted">Get comfortable first.</div>
+    <div id="rest" class="rest"></div>
+  </div>
+  <div class="progress"><div id="calProgress"></div></div>
+</div>
+
 <div id="toast" class="toast"></div>
+
 <script type="module">
-const $=id=>document.getElementById(id),video=$('video'),status=$('status'),diag=$('diag'),cam=$('cam'),calBtn=$('calBtn'),mode=$('mode'),assist=$('assist'),cursor=$('cursor'),cal=$('cal'),dotEl=$('dot'),ct=$('ct'),ch=$('ch'),rest=$('rest'),toast=$('toast');
-let landmarker=null,ready=false,loading=false,stream=null,running=false,calibrated=false,latest=null,blink={l:0,r:0},pose={yaw:0,pitch:0,roll:0},modelX=null,modelY=null,anchors=[],featureMean=[],featureStd=[],sx=innerWidth/2,sy=innerHeight/2,rawX=sx,rawY=sy,lastInfer=0,frames=0,fpsAt=performance.now(),clicks=0,winkAt=0,winkLock=false,lastBlink=0,wasClosed=false,dwellAt=0,dwellAnchor=null,toastTimer=null,lastGoodPose=null,stableFrames=0,focusEl=null;
-const SWEEPS=[
-  {a:[.08,.09],b:[.92,.09],ms:1750},{a:[.92,.25],b:[.08,.25],ms:1750},
-  {a:[.08,.41],b:[.92,.41],ms:1750},{a:[.92,.57],b:[.08,.57],ms:1750},
-  {a:[.08,.73],b:[.92,.73],ms:1850},{a:[.92,.89],b:[.08,.89],ms:2100},
-  {a:[.18,.10],b:[.18,.90],ms:1750},{a:[.50,.90],b:[.50,.10],ms:1750},
-  {a:[.82,.10],b:[.82,.90],ms:1750},{a:[.10,.12],b:[.90,.88],ms:1900},
-  {a:[.90,.12],b:[.10,.88],ms:1900}
+const $=id=>document.getElementById(id);
+const video=$('video'),status=$('status'),diag=$('diag'),cam=$('cam'),calBtn=$('calBtn'),mode=$('mode'),assist=$('assist'),pace=$('pace'),cursor=$('cursor'),cal=$('cal'),dotEl=$('dot'),ct=$('ct'),ch=$('ch'),rest=$('rest'),calProgress=$('calProgress'),toast=$('toast');
+
+let landmarker=null,ready=false,loading=false,stream=null,running=false,calibrated=false;
+let latest=null,latestAt=0,blink={l:0,r:0},pose={yaw:0,pitch:0,roll:0};
+let modelX=null,modelY=null,sx=innerWidth/2,sy=innerHeight/2,lastTargetX=sx,lastTargetY=sy;
+let lastInfer=0,frames=0,fpsAt=performance.now(),clicks=0,focusEl=null,toastTimer=null;
+let winkAt=0,winkLock=false,lastBlink=0,wasClosed=false,dwellAt=0,dwellAnchor=null;
+
+const PATHS=[
+  {a:[.08,.10],b:[.92,.10],kind:'h'},
+  {a:[.92,.30],b:[.08,.30],kind:'h'},
+  {a:[.08,.50],b:[.92,.50],kind:'h'},
+  {a:[.92,.70],b:[.08,.70],kind:'h'},
+  {a:[.08,.90],b:[.92,.90],kind:'bottom'},
+  {a:[.22,.10],b:[.22,.90],kind:'v'},
+  {a:[.78,.90],b:[.78,.10],kind:'v'},
+  {a:[.10,.12],b:[.90,.88],kind:'diag'},
+  {a:[.90,.12],b:[.10,.88],kind:'diag'}
 ];
-function st(t,c=''){status.textContent=t;status.className='pill'+(c?' '+c:'')}function msg(t,ms=2600){toast.textContent=t;toast.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.classList.remove('show'),ms)}function clamp(v,a,b){return Math.max(a,Math.min(b,v))}function sleep(ms){return new Promise(r=>setTimeout(r,ms))}function timeout(p,ms){return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms))])}
-async function loadTracker(){const sources=[['unpkg','https://unpkg.com/@mediapipe/tasks-vision@0.10.35/vision_bundle.mjs','https://unpkg.com/@mediapipe/tasks-vision@0.10.35/wasm'],['esm.sh','https://esm.sh/@mediapipe/tasks-vision@0.10.35?bundle','https://unpkg.com/@mediapipe/tasks-vision@0.10.35/wasm'],['jsDelivr','https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/vision_bundle.mjs','https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm']];let lastErr;for(const [name,url,wasm] of sources){try{diag.textContent='Trying tracker source: '+name+'…';const M=await timeout(import(url),12000);if(M.FaceLandmarker&&M.FilesetResolver)return{M,wasm,name}}catch(e){lastErr=e;console.warn(name,e)}}throw lastErr||new Error('all tracker sources failed')}
-async function init(){if(loading)return;loading=true;ready=false;try{const{M,wasm,name}=await loadTracker();$('sourceTag').textContent='Tracker source: '+name;diag.textContent='Loading vision runtime…';const vision=await timeout(M.FilesetResolver.forVisionTasks(wasm),18000);diag.textContent='Loading full face model…';landmarker=await timeout(M.FaceLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',delegate:'CPU'},runningMode:'VIDEO',numFaces:1,outputFaceBlendshapes:true,outputFacialTransformationMatrixes:true,minFaceDetectionConfidence:.55,minFacePresenceConfidence:.55,minTrackingConfidence:.55}),30000);ready=true;st(running?'Find my face…':'Tracker ready','ok');diag.textContent='Full-face tracker ready.';if(running)requestAnimationFrame(loop)}catch(e){console.error(e);st('Tracker failed','bad');diag.textContent='Tracker error: '+(e.message||e)+'. Reload or change network if CDN access is blocked.';msg('Tracker could not load.',5000)}finally{loading=false}}
-async function startCam(){try{stream?.getTracks().forEach(t=>t.stop());stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}}});video.srcObject=stream;await video.play();running=true;cam.disabled=true;cam.textContent='Camera active';if(ready)requestAnimationFrame(loop);else init()}catch(e){diag.textContent='Camera error: '+e.name;msg('Allow camera permission in Chrome.',4500)}}
-function avg(a,ids){let x=0,y=0,z=0;for(const i of ids){x+=a[i].x;y+=a[i].y;z+=a[i].z||0}return{x:x/ids.length,y:y/ids.length,z:z/ids.length}}function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}function projection(p,a,b){const vx=b.x-a.x,vy=b.y-a.y,d=vx*vx+vy*vy||1e-8;return((p.x-a.x)*vx+(p.y-a.y)*vy)/d}function eyeVertical(p,top,bottom){const d=bottom.y-top.y;return Math.abs(d)<1e-6?.5:(p.y-top.y)/d}function eyePerp(p,a,b){const vx=b.x-a.x,vy=b.y-a.y,w=Math.hypot(vx,vy)||1e-6;return((p.x-a.x)*(-vy)+(p.y-a.y)*vx)/w}
-function rotationFromMatrix(m){try{const d=m?.data||m;if(!d||d.length<16)return null;const r00=d[0],r10=d[4],r20=d[8],r21=d[9],r22=d[10];const pitch=Math.asin(clamp(-r20,-1,1)),yaw=Math.atan2(r10,r00),roll=Math.atan2(r21,r22);return{yaw:yaw*57.2958,pitch:pitch*57.2958,roll:roll*57.2958}}catch{return null}}
-function fullFeatures(result){const a=result.faceLandmarks?.[0];if(!a||a.length<478)return null;const bm={};for(const c of result.faceBlendshapes?.[0]?.categories||[])bm[c.categoryName]=c.score;
- const irisL=avg(a,[468,469,470,471,472]),irisR=avg(a,[473,474,475,476,477]);
- const lOuter=a[33],lInner=a[133],rInner=a[362],rOuter=a[263];
- const lTop=avg(a,[159,158,160]),lBot=avg(a,[145,144,153]),rTop=avg(a,[386,385,387]),rBot=avg(a,[374,373,380]);
- const lWidth=dist(lOuter,lInner)||1e-5,rWidth=dist(rInner,rOuter)||1e-5;
- const lx=projection(irisL,lOuter,lInner),rx=projection(irisR,rInner,rOuter);
- const lyLid=eyeVertical(irisL,lTop,lBot),ryLid=eyeVertical(irisR,rTop,rBot);
- const lyAxis=eyePerp(irisL,lOuter,lInner)/lWidth,ryAxis=eyePerp(irisR,rInner,rOuter)/rWidth;
- const lTopShape=eyePerp(lTop,lOuter,lInner)/lWidth,lBotShape=eyePerp(lBot,lOuter,lInner)/lWidth;
- const rTopShape=eyePerp(rTop,rInner,rOuter)/rWidth,rBotShape=eyePerp(rBot,rInner,rOuter)/rWidth;
- const lOpen=dist(lTop,lBot)/lWidth,rOpen=dist(rTop,rBot)/rWidth;
- const eyeMid={x:(lOuter.x+rOuter.x)/2,y:(lOuter.y+rOuter.y)/2},eyeDist=dist(lOuter,rOuter)||1e-5,nose=a[1],chin=a[152];
- const yawProxy=(nose.x-eyeMid.x)/eyeDist,pitchProxy=(nose.y-eyeMid.y)/eyeDist,faceHeight=dist(eyeMid,chin)/eyeDist;
- const rollProxy=Math.atan2(rOuter.y-lOuter.y,rOuter.x-lOuter.x);
- const matPose=rotationFromMatrix(result.facialTransformationMatrixes?.[0]);pose=matPose||{yaw:yawProxy*50,pitch:pitchProxy*45,roll:rollProxy*57.2958};
- blink={l:bm.eyeBlinkLeft||0,r:bm.eyeBlinkRight||0};
- const lookOutL=bm.eyeLookOutLeft||0,lookInL=bm.eyeLookInLeft||0,lookOutR=bm.eyeLookOutRight||0,lookInR=bm.eyeLookInRight||0;
- const lookDownL=bm.eyeLookDownLeft||0,lookDownR=bm.eyeLookDownRight||0,lookUpL=bm.eyeLookUpLeft||0,lookUpR=bm.eyeLookUpRight||0;
- const lookX=lookOutL-lookInL+lookInR-lookOutR;
- const lookDown=(lookDownL+lookDownR)/2,lookUp=(lookUpL+lookUpR)/2,lookY=lookDown-lookUp;
- const avgX=(lx+rx)/2,avgYLid=(lyLid+ryLid)/2,avgYAxis=(lyAxis+ryAxis)/2,open=(lOpen+rOpen)/2;
- return[1,avgX,avgYLid,avgYAxis,lx,rx,lyLid,ryLid,lyAxis,ryAxis,lOpen,rOpen,lTopShape,lBotShape,rTopShape,rBotShape,lookX,lookY,lookDown,lookUp,pose.yaw/60,pose.pitch/60,pose.roll/60,yawProxy,pitchProxy,faceHeight,avgX*avgX,avgYAxis*avgYAxis,lookY*lookY,avgYAxis*lookY,avgYLid*lookY,open*lookY];}
-function median(a){const b=[...a].sort((x,y)=>x-y),m=b.length>>1;return b.length%2?b[m]:(b[m-1]+b[m])/2}function mean(a){return a.reduce((s,v)=>s+v,0)/(a.length||1)}function std(a,m){return Math.sqrt(mean(a.map(v=>(v-m)*(v-m))))||1}function dp(a,b){let s=0;for(let i=0;i<a.length;i++)s+=a[i]*b[i];return s}
-function solve(A,b){const n=b.length,M=A.map((r,i)=>[...r,b[i]]);for(let c=0;c<n;c++){let p=c;for(let r=c+1;r<n;r++)if(Math.abs(M[r][c])>Math.abs(M[p][c]))p=r;[M[c],M[p]]=[M[p],M[c]];const d=M[c][c];if(Math.abs(d)<1e-10)continue;for(let j=c;j<=n;j++)M[c][j]/=d;for(let r=0;r<n;r++){if(r===c)continue;const f=M[r][c];for(let j=c;j<=n;j++)M[r][j]-=f*M[c][j]}}return M.map(r=>Number.isFinite(r[n])?r[n]:0)}function ridge(X,Y,l=.012){const p=X[0].length,A=Array.from({length:p},()=>Array(p).fill(0)),b=Array(p).fill(0);for(let r=0;r<X.length;r++)for(let i=0;i<p;i++){b[i]+=X[r][i]*Y[r];for(let j=0;j<p;j++)A[i][j]+=X[r][i]*X[r][j]}for(let i=1;i<p;i++)A[i][i]+=l;return solve(A,b)}
-function normalizeFeature(f){return f.slice()}function featureDistance(a,b){let s=0;for(let i=1;i<a.length;i++){const eye=i<=19?2.2:(i<=25?.35:1.2),d=(a[i]-b[i])*eye;s+=d*d}return Math.sqrt(s)}
-function rbfPredict(nf,gx,gy){if(!anchors.length)return{x:gx,y:gy};const k=anchors.map(a=>({a,d:featureDistance(nf,a.nf)})).sort((u,v)=>u.d-v.d).slice(0,12);let x=0,y=0,w=0;for(const z of k){const wt=1/Math.pow(z.d+.06,2);x+=z.a.x*wt;y+=z.a.y*wt;w+=wt}return{x:gx*.88+x/w*.12,y:gy*.82+y/w*.18}}
-function calibrationFrameOK(){return latest&&blink.l<.78&&blink.r<.78}
-function oneEuro(value,prev,velocity){const speed=Math.abs(velocity),alpha=clamp(.16+speed/520,.16,.62);return prev+(value-prev)*alpha}
-function snapTarget(x,y,velocity){if(!assist.checked||velocity>24)return{x,y,el:null};const els=[...document.querySelectorAll('.letter,button:not(:disabled),select')];let best=null,bd=42;for(const el of els){const r=el.getBoundingClientRect();if(r.width===0||r.height===0)continue;const cx=r.left+r.width/2,cy=r.top+r.height/2,d=Math.hypot(x-cx,y-cy);if(d<bd){bd=d;best={x:cx,y:cy,el}}}return best||{x,y,el:null}}
-function clearFocus(){if(focusEl){focusEl.classList.remove('focus');focusEl=null}}function clickAt(x,y){clicks++;$('clicks').textContent=clicks;cursor.style.display='none';const e=document.elementFromPoint(x,y);cursor.style.display='block';e?.closest('button')?.click()}
-function clickSignal(now,x,y){if(mode.value==='wink'){const d=blink.l>.74&&blink.r<.28;if(d&&!winkAt)winkAt=now;if(d&&!winkLock&&now-winkAt>260){winkLock=true;clickAt(x,y)}if(!d){winkAt=0;winkLock=false}}else if(mode.value==='double'){const c=blink.l>.67&&blink.r>.67;if(c&&!wasClosed){const dt=now-lastBlink;if(dt>150&&dt<620){clickAt(x,y);lastBlink=0}else lastBlink=now}wasClosed=c}else{if(!dwellAnchor||Math.hypot(x-dwellAnchor.x,y-dwellAnchor.y)>16){dwellAnchor={x,y};dwellAt=now}if(now-dwellAt>1200){clickAt(x,y);dwellAt=now+750;dwellAnchor={x,y}}}}
-function updateCursor(f,now){const nf=normalizeFeature(f),gx=clamp(dp(nf,modelX),.005,.995),gy=clamp(dp(nf,modelY),.005,.995),p=rbfPredict(nf,gx,gy),tx=clamp(p.x,.005,.995)*innerWidth,ty=clamp(p.y,.005,.995)*innerHeight;const velocity=Math.hypot(tx-rawX,ty-rawY);rawX=tx;rawY=ty;sx=oneEuro(tx,sx,velocity);sy=oneEuro(ty,sy,velocity);const snapped=snapTarget(sx,sy,velocity);if(snapped.el!==focusEl){clearFocus();focusEl=snapped.el;if(focusEl?.classList.contains('letter'))focusEl.classList.add('focus')}const ox=snapped.x,oy=snapped.y;cursor.style.left=ox+'px';cursor.style.top=oy+'px';cursor.style.display='block';$('stableTag').textContent='Stability: '+Math.round(velocity)+' px';clickSignal(now,ox,oy)}
-function loop(now){if(!running||!ready||!landmarker)return;requestAnimationFrame(loop);if(video.readyState<2||now-lastInfer<34)return;lastInfer=now;try{const r=landmarker.detectForVideo(video,now);latest=fullFeatures(r);$('face').textContent=latest?'Yes':'No';if(latest){$('pose').textContent=Math.round(pose.yaw)+'°/'+Math.round(pose.pitch)+'°';st(calibrated?'Tracking':'Face locked','ok');calBtn.disabled=false;diag.textContent=calibrated?'Tracking with eye-dominant gaze + light head-pose correction.':'Face found. Run Smooth sweep calibrate.';if(calibrated&&!cal.classList.contains('show')&&blink.l<.55&&blink.r<.55)updateCursor(latest,now)}else{st('Find my face…');calBtn.disabled=true;cursor.style.display='none';clearFocus()}}catch(e){console.warn(e)}frames++;if(now-fpsAt>1000){$('fps').textContent=Math.round(frames*1000/(now-fpsAt));frames=0;fpsAt=now}}
-async function runSweep(sw,index,samples){const [ax,ay]=sw.a,[bx,by]=sw.b;ct.textContent=`Smooth sweep ${index+1} of ${SWEEPS.length}`;ch.textContent='Follow the green target naturally. Do not force your eyes open.';rest.textContent=index===5?'This lower sweep is slower on purpose. Blink normally if needed.':'Blink frames are ignored automatically.';const start=performance.now();let lastSample=0,count=0;while(true){const now=performance.now(),t=clamp((now-start)/sw.ms,0,1),e=t*t*(3-2*t),x=ax+(bx-ax)*e,y=ay+(by-ay)*e;dotEl.style.left=x*100+'%';dotEl.style.top=y*100+'%';if(now-lastSample>48&&calibrationFrameOK()){samples.push({f:[...latest],x,y});lastSample=now;count++}if(t>=1)break;await sleep(16)}await sleep(180);return count}
-async function calibrate(){if(!latest)return msg('Keep your full face and both eyes visible.');calibrated=false;$('calState').textContent='No';$('err').textContent='—';anchors=[];featureMean=[];featureStd=[];clearFocus();cursor.style.display='none';calBtn.disabled=true;cal.classList.add('show');try{const samples=[];for(let i=0;i<SWEEPS.length;i++){if(i===6){ct.textContent='Rest your eyes';ch.textContent='Blink naturally and relax for 2 seconds.';rest.textContent='Next are vertical and diagonal sweeps.';await sleep(2000)}const n=await runSweep(SWEEPS[i],i,samples);$('sampleTag').textContent=`Calibration: ${i+1}/${SWEEPS.length} sweeps · ${samples.length} samples`;if(n<8)diag.textContent='Low visibility during one sweep; continuing instead of getting stuck.'}
- if(samples.length<120)throw new Error('too few usable gaze samples');
- const stride=Math.max(1,Math.floor(samples.length/90));anchors=samples.filter((_,i)=>i%stride===0).slice(0,100).map(s=>({f:s.f,x:s.x,y:s.y,nf:s.f.slice()}));
- const X=samples.map(s=>s.f),xs=samples.map(s=>s.x),ys=samples.map(s=>s.y);modelX=ridge(X,xs,.025);modelY=ridge(X,ys,.018);
- const errors=[];for(let i=0;i<samples.length;i+=5){const a=samples[i],gx=clamp(dp(a.f,modelX),0,1),gy=clamp(dp(a.f,modelY),0,1);errors.push(Math.hypot((gx-a.x)*innerWidth,(gy-a.y)*innerHeight))}const med=Math.round(median(errors));$('err').textContent=med+' px';$('sampleTag').textContent=`Calibration: ${SWEEPS.length}/${SWEEPS.length} sweeps · ${samples.length} samples`;calibrated=true;$('calState').textContent='Yes';sx=rawX=innerWidth/2;sy=rawY=innerHeight/2;dwellAnchor=null;diag.textContent=`Calibration complete from ${samples.length} continuous samples. Validation ${med}px.`;msg('Calibration complete. Test direction first, then letters.',4200)}catch(e){console.error(e);modelX=modelY=null;anchors=[];diag.textContent='Calibration failed: '+(e.message||e);msg('Calibration failed. Keep the phone fixed and try again.',4500)}finally{cal.classList.remove('show');calBtn.disabled=!latest}}
-for(const c of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'){const d=document.createElement('div');d.className='letter';d.textContent=c;$('letters').appendChild(d)}cam.onclick=startCam;calBtn.onclick=calibrate;$('full').onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await document.documentElement.requestFullscreen()}catch{}};window.addEventListener('orientationchange',()=>{calibrated=false;modelX=modelY=null;anchors=[];$('calState').textContent='No';$('err').textContent='—';cursor.style.display='none';msg('Orientation changed. Calibrate again.',3000)});init();
+
+const FOLLOW_LAG_MS=180;
+
+function st(t,c=''){status.textContent=t;status.className='pill'+(c?' '+c:'')}
+function msg(t,ms=2600){toast.textContent=t;toast.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.classList.remove('show'),ms)}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+function timeout(p,ms){return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms))])}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+function avg(a,ids){let x=0,y=0,z=0;for(const i of ids){x+=a[i].x;y+=a[i].y;z+=a[i].z||0}return{x:x/ids.length,y:y/ids.length,z:z/ids.length}}
+function projection(p,a,b){const vx=b.x-a.x,vy=b.y-a.y,d=vx*vx+vy*vy||1e-8;return((p.x-a.x)*vx+(p.y-a.y)*vy)/d}
+function eyeVertical(p,top,bottom){const d=bottom.y-top.y;return Math.abs(d)<1e-6?.5:(p.y-top.y)/d}
+function eyePerp(p,a,b){const vx=b.x-a.x,vy=b.y-a.y,w=Math.hypot(vx,vy)||1e-6;return((p.x-a.x)*(-vy)+(p.y-a.y)*vx)/w}
+
+async function loadTracker(){
+  const sources=[
+    ['unpkg','https://unpkg.com/@mediapipe/tasks-vision@0.10.35/vision_bundle.mjs','https://unpkg.com/@mediapipe/tasks-vision@0.10.35/wasm'],
+    ['esm.sh','https://esm.sh/@mediapipe/tasks-vision@0.10.35?bundle','https://unpkg.com/@mediapipe/tasks-vision@0.10.35/wasm'],
+    ['jsDelivr','https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/vision_bundle.mjs','https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm']
+  ];
+  let lastErr;
+  for(const [name,url,wasm] of sources){
+    try{
+      diag.textContent='Trying tracker source: '+name+'…';
+      const M=await timeout(import(url),12000);
+      if(M.FaceLandmarker&&M.FilesetResolver)return{M,wasm,name};
+    }catch(e){lastErr=e;console.warn(name,e)}
+  }
+  throw lastErr||new Error('all tracker sources failed');
+}
+
+async function init(){
+  if(loading)return;loading=true;ready=false;
+  try{
+    const{M,wasm,name}=await loadTracker();
+    $('sourceTag').textContent='Tracker source: '+name;
+    diag.textContent='Loading vision runtime…';
+    const vision=await timeout(M.FilesetResolver.forVisionTasks(wasm),18000);
+    diag.textContent='Loading face + eye model…';
+    landmarker=await timeout(M.FaceLandmarker.createFromOptions(vision,{
+      baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',delegate:'CPU'},
+      runningMode:'VIDEO',numFaces:1,outputFaceBlendshapes:true,outputFacialTransformationMatrixes:true,
+      minFaceDetectionConfidence:.52,minFacePresenceConfidence:.52,minTrackingConfidence:.52
+    }),30000);
+    ready=true;st(running?'Find my face…':'Tracker ready','ok');diag.textContent='Tracker ready.';
+    if(running)requestAnimationFrame(loop);
+  }catch(e){
+    console.error(e);st('Tracker failed','bad');diag.textContent='Tracker error: '+(e.message||e);msg('Tracker could not load.',5000);
+  }finally{loading=false}
+}
+
+async function startCam(){
+  try{
+    stream?.getTracks().forEach(t=>t.stop());
+    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}}});
+    video.srcObject=stream;await video.play();running=true;cam.disabled=true;cam.textContent='Camera active';
+    if(ready)requestAnimationFrame(loop);else init();
+  }catch(e){diag.textContent='Camera error: '+e.name;msg('Allow camera permission in Chrome.',4500)}
+}
+
+function rotationFromMatrix(m){
+  try{
+    const d=m?.data||m;if(!d||d.length<16)return null;
+    const r00=d[0],r10=d[4],r20=d[8],r21=d[9],r22=d[10];
+    const pitch=Math.asin(clamp(-r20,-1,1)),yaw=Math.atan2(r10,r00),roll=Math.atan2(r21,r22);
+    return{yaw:yaw*57.2958,pitch:pitch*57.2958,roll:roll*57.2958};
+  }catch{return null}
+}
+
+function fullFeatures(result){
+  const a=result.faceLandmarks?.[0];if(!a||a.length<478)return null;
+  const bm={};for(const c of result.faceBlendshapes?.[0]?.categories||[])bm[c.categoryName]=c.score;
+
+  const irisL=avg(a,[468,469,470,471,472]),irisR=avg(a,[473,474,475,476,477]);
+  const lOuter=a[33],lInner=a[133],rInner=a[362],rOuter=a[263];
+  const lTop=avg(a,[159,158,160]),lBot=avg(a,[145,144,153]),rTop=avg(a,[386,385,387]),rBot=avg(a,[374,373,380]);
+  const lWidth=dist(lOuter,lInner)||1e-5,rWidth=dist(rInner,rOuter)||1e-5;
+
+  const lx=projection(irisL,lOuter,lInner),rx=projection(irisR,rInner,rOuter);
+  const lyLid=eyeVertical(irisL,lTop,lBot),ryLid=eyeVertical(irisR,rTop,rBot);
+  const lyAxis=eyePerp(irisL,lOuter,lInner)/lWidth,ryAxis=eyePerp(irisR,rInner,rOuter)/rWidth;
+  const lTopShape=eyePerp(lTop,lOuter,lInner)/lWidth,lBotShape=eyePerp(lBot,lOuter,lInner)/lWidth;
+  const rTopShape=eyePerp(rTop,rInner,rOuter)/rWidth,rBotShape=eyePerp(rBot,rInner,rOuter)/rWidth;
+  const lOpen=dist(lTop,lBot)/lWidth,rOpen=dist(rTop,rBot)/rWidth;
+
+  const eyeMid={x:(lOuter.x+rOuter.x)/2,y:(lOuter.y+rOuter.y)/2},eyeDist=dist(lOuter,rOuter)||1e-5,nose=a[1];
+  const yawProxy=(nose.x-eyeMid.x)/eyeDist,pitchProxy=(nose.y-eyeMid.y)/eyeDist;
+  const rollProxy=Math.atan2(rOuter.y-lOuter.y,rOuter.x-lOuter.x);
+  const mp=rotationFromMatrix(result.facialTransformationMatrixes?.[0]);
+  pose=mp||{yaw:yawProxy*50,pitch:pitchProxy*45,roll:rollProxy*57.2958};
+
+  blink={l:bm.eyeBlinkLeft||0,r:bm.eyeBlinkRight||0};
+  const lookOutL=bm.eyeLookOutLeft||0,lookInL=bm.eyeLookInLeft||0,lookOutR=bm.eyeLookOutRight||0,lookInR=bm.eyeLookInRight||0;
+  const lookDownL=bm.eyeLookDownLeft||0,lookDownR=bm.eyeLookDownRight||0,lookUpL=bm.eyeLookUpLeft||0,lookUpR=bm.eyeLookUpRight||0;
+  const lookX=lookOutL-lookInL+lookInR-lookOutR;
+  const lookDown=(lookDownL+lookDownR)/2,lookUp=(lookUpL+lookUpR)/2,lookY=lookDown-lookUp;
+
+  const avgX=(lx+rx)/2,avgYAxis=(lyAxis+ryAxis)/2,avgYLid=(lyLid+ryLid)/2,open=(lOpen+rOpen)/2;
+
+  const xF=[1,avgX,lx,rx,lookX,pose.yaw/400,avgX*avgX,lookX*lookX,avgX*lookX];
+  const yF=[1,avgYAxis,lyAxis,ryAxis,avgYLid,lyLid,ryLid,lOpen,rOpen,lTopShape,lBotShape,rTopShape,rBotShape,lookY,lookDown,lookUp,pose.pitch/400,avgYAxis*avgYAxis,lookY*lookY,avgYAxis*lookY,open*lookY];
+  return{xF,yF};
+}
+
+function mean(a){return a.reduce((s,v)=>s+v,0)/(a.length||1)}
+function median(a){const b=[...a].sort((x,y)=>x-y),m=b.length>>1;return b.length%2?b[m]:(b[m-1]+b[m])/2}
+function dp(a,b){let s=0;for(let i=0;i<a.length;i++)s+=a[i]*b[i];return s}
+
+function solve(A,b){
+  const n=b.length,M=A.map((r,i)=>[...r,b[i]]);
+  for(let c=0;c<n;c++){
+    let p=c;for(let r=c+1;r<n;r++)if(Math.abs(M[r][c])>Math.abs(M[p][c]))p=r;
+    [M[c],M[p]]=[M[p],M[c]];const d=M[c][c];if(Math.abs(d)<1e-10)continue;
+    for(let j=c;j<=n;j++)M[c][j]/=d;
+    for(let r=0;r<n;r++){if(r===c)continue;const f=M[r][c];for(let j=c;j<=n;j++)M[r][j]-=f*M[c][j]}
+  }
+  return M.map(r=>Number.isFinite(r[n])?r[n]:0);
+}
+
+function ridge(samples,targetKey,featureKey,lambda){
+  const p=samples[0][featureKey].length,A=Array.from({length:p},()=>Array(p).fill(0)),b=Array(p).fill(0);
+  for(const s of samples){
+    const f=s[featureKey],y=s[targetKey];
+    const weight=1+.35*Math.abs((targetKey==='x'?s.x:s.y)-.5)*2;
+    for(let i=0;i<p;i++){
+      b[i]+=weight*f[i]*y;
+      for(let j=0;j<p;j++)A[i][j]+=weight*f[i]*f[j];
+    }
+  }
+  for(let i=1;i<p;i++)A[i][i]+=lambda;
+  return solve(A,b);
+}
+
+function calibrationFrameOK(){
+  return latest && performance.now()-latestAt<120 && blink.l<.86 && blink.r<.86;
+}
+
+function clearFocus(){if(focusEl){focusEl.classList.remove('focus');focusEl=null}}
+
+function snapTarget(x,y,velocity){
+  if(!assist.checked||velocity>15)return{x,y,el:null};
+  const els=[...document.querySelectorAll('.letter,button:not(:disabled),select')];
+  let best=null,bd=32;
+  for(const el of els){
+    const r=el.getBoundingClientRect();if(!r.width||!r.height)continue;
+    const cx=r.left+r.width/2,cy=r.top+r.height/2,d=Math.hypot(x-cx,y-cy);
+    if(d<bd){bd=d;best={x:cx,y:cy,el}}
+  }
+  return best||{x,y,el:null};
+}
+
+function smoothCursor(tx,ty){
+  const dx=tx-sx,dy=ty-sy,d=Math.hypot(dx,dy);
+  let alpha=d<20?.08:d<80?.13:d<220?.20:.28;
+  let stepx=dx*alpha,stepy=dy*alpha;
+  const step=Math.hypot(stepx,stepy),maxStep=62;
+  if(step>maxStep){const k=maxStep/step;stepx*=k;stepy*=k}
+  sx+=stepx;sy+=stepy;
+  return{x:sx,y:sy,velocity:Math.hypot(sx-lastTargetX,sy-lastTargetY)};
+}
+
+function clickAt(x,y){
+  clicks++;$('clicks').textContent=clicks;cursor.style.display='none';
+  const e=document.elementFromPoint(x,y);cursor.style.display='block';
+  e?.closest('button')?.click();
+}
+
+function clickSignal(now,x,y){
+  if(mode.value==='wink'){
+    const d=blink.l>.74&&blink.r<.28;
+    if(d&&!winkAt)winkAt=now;
+    if(d&&!winkLock&&now-winkAt>260){winkLock=true;clickAt(x,y)}
+    if(!d){winkAt=0;winkLock=false}
+  }else if(mode.value==='double'){
+    const c=blink.l>.67&&blink.r>.67;
+    if(c&&!wasClosed){const dt=now-lastBlink;if(dt>150&&dt<620){clickAt(x,y);lastBlink=0}else lastBlink=now}
+    wasClosed=c;
+  }else{
+    if(!dwellAnchor||Math.hypot(x-dwellAnchor.x,y-dwellAnchor.y)>14){dwellAnchor={x,y};dwellAt=now}
+    if(now-dwellAt>1250){clickAt(x,y);dwellAt=now+800;dwellAnchor={x,y}}
+  }
+}
+
+function updateCursor(f,now){
+  const tx=clamp(dp(f.xF,modelX),.005,.995)*innerWidth;
+  const ty=clamp(dp(f.yF,modelY),.005,.995)*innerHeight;
+  const sm=smoothCursor(tx,ty);
+  const snapped=snapTarget(sm.x,sm.y,sm.velocity);
+  if(snapped.el!==focusEl){clearFocus();focusEl=snapped.el;if(focusEl?.classList.contains('letter'))focusEl.classList.add('focus')}
+  cursor.style.left=snapped.x+'px';cursor.style.top=snapped.y+'px';cursor.style.display='block';
+  $('stableTag').textContent='Cursor stability: '+Math.round(sm.velocity)+' px';
+  lastTargetX=sm.x;lastTargetY=sm.y;
+  clickSignal(now,snapped.x,snapped.y);
+}
+
+function loop(now){
+  if(!running||!ready||!landmarker)return;
+  requestAnimationFrame(loop);
+  if(video.readyState<2||now-lastInfer<34)return;
+  lastInfer=now;
+  try{
+    const r=landmarker.detectForVideo(video,now);
+    latest=fullFeatures(r);latestAt=performance.now();
+    $('face').textContent=latest?'Yes':'No';
+    if(latest){
+      $('pose').textContent=Math.round(pose.yaw)+'°/'+Math.round(pose.pitch)+'°';
+      st(calibrated?'Tracking':'Face locked','ok');calBtn.disabled=false;
+      diag.textContent=calibrated?'Tracking. Cursor is deliberately damped for precision.':'Face found. Run Guided slow calibrate.';
+      if(calibrated&&!cal.classList.contains('show')&&blink.l<.60&&blink.r<.60)updateCursor(latest,now);
+    }else{
+      st('Find my face…');calBtn.disabled=true;cursor.style.display='none';clearFocus();
+    }
+  }catch(e){console.warn(e)}
+  frames++;
+  if(now-fpsAt>1000){$('fps').textContent=Math.round(frames*1000/(now-fpsAt));frames=0;fpsAt=now}
+}
+
+function pathDuration(kind){
+  const slow=pace.value==='very-slow';
+  if(kind==='bottom')return slow?8500:6900;
+  if(kind==='v'||kind==='diag')return slow?7600:6100;
+  return slow?6800:5400;
+}
+
+async function showStartPoint(path,index){
+  dotEl.style.left=path.a[0]*100+'%';dotEl.style.top=path.a[1]*100+'%';
+  ct.textContent=`Sweep ${index+1} of ${PATHS.length}`;
+  ch.textContent='First find the green dot. It will stay still before it moves.';
+  rest.textContent='Relax your eyes. Movement starts after this hold.';
+  await sleep(1200);
+}
+
+async function practiceSweep(){
+  const path={a:[.12,.50],b:[.88,.50],kind:'practice'};
+  ct.textContent='Practice sweep';
+  ch.textContent='This one is not recorded. Just get used to the speed.';
+  rest.textContent='Follow naturally — no need to be perfect.';
+  dotEl.style.left=path.a[0]*100+'%';dotEl.style.top=path.a[1]*100+'%';
+  await sleep(1300);
+  const ms=pathDuration('h');
+  const start=performance.now();
+  while(true){
+    const now=performance.now(),t=clamp((now-start)/ms,0,1);
+    const e=t*t*(3-2*t);
+    const x=path.a[0]+(path.b[0]-path.a[0])*e,y=.5;
+    dotEl.style.left=x*100+'%';dotEl.style.top=y*100+'%';
+    if(t>=1)break;
+    await sleep(16);
+  }
+  await sleep(800);
+}
+
+async function runSweep(path,index,samples){
+  await showStartPoint(path,index);
+  const history=[];
+  const ms=pathDuration(path.kind),start=performance.now();
+  let lastSample=0,count=0;
+  ct.textContent=`Sweep ${index+1} of ${PATHS.length}`;
+  ch.textContent='Follow the dot gently. It is moving slowly on purpose.';
+  rest.textContent=path.kind==='bottom'?'Lower-screen sweep: extra slow. Do not strain; look naturally.':'Blink normally if needed; blink frames are skipped.';
+  while(true){
+    const now=performance.now(),t=clamp((now-start)/ms,0,1),e=t*t*(3-2*t);
+    const x=path.a[0]+(path.b[0]-path.a[0])*e,y=path.a[1]+(path.b[1]-path.a[1])*e;
+    dotEl.style.left=x*100+'%';dotEl.style.top=y*100+'%';
+    history.push({t:now,x,y});while(history.length&&history[0].t<now-700)history.shift();
+
+    if(now-lastSample>44&&calibrationFrameOK()){
+      const labelTime=now-FOLLOW_LAG_MS;
+      let label=history[0]||{x,y},best=Infinity;
+      for(const h of history){const d=Math.abs(h.t-labelTime);if(d<best){best=d;label=h}}
+      samples.push({xF:[...latest.xF],yF:[...latest.yF],x:label.x,y:label.y});
+      lastSample=now;count++;
+    }
+    calProgress.style.width=((index+t)/PATHS.length*100).toFixed(1)+'%';
+    if(t>=1)break;
+    await sleep(16);
+  }
+  const endHold=performance.now()+650;
+  while(performance.now()<endHold){
+    if(calibrationFrameOK()&&performance.now()-lastSample>48){
+      samples.push({xF:[...latest.xF],yF:[...latest.yF],x:path.b[0],y:path.b[1]});
+      lastSample=performance.now();count++;
+    }
+    await sleep(24);
+  }
+  await sleep(420);
+  return count;
+}
+
+async function calibrate(){
+  if(!latest)return msg('Keep your full face and both eyes visible.');
+  calibrated=false;$('calState').textContent='No';$('err').textContent='—';clearFocus();cursor.style.display='none';
+  calBtn.disabled=true;cal.classList.add('show');calProgress.style.width='0%';
+  try{
+    const samples=[];
+    dotEl.style.left='50%';dotEl.style.top='50%';
+    ct.textContent='Get ready';
+    ch.textContent='Look at the center dot. Blink, relax, and settle your eyes.';
+    rest.textContent='Nothing will move for 3 seconds.';
+    await sleep(3000);
+
+    for(let n=3;n>=1;n--){
+      ct.textContent='Starting in '+n;
+      ch.textContent='Keep looking at the center. The first moving pass is only practice.';
+      await sleep(700);
+    }
+
+    await practiceSweep();
+
+    ct.textContent='Calibration starts now';
+    ch.textContent='The next sweeps are recorded.';
+    rest.textContent='Each sweep pauses at its starting point before moving.';
+    await sleep(1300);
+
+    for(let i=0;i<PATHS.length;i++){
+      if(i===5){
+        ct.textContent='Eye break';
+        ch.textContent='Blink normally and relax for 2 seconds.';
+        rest.textContent='Then we continue with vertical and diagonal sweeps.';
+        dotEl.style.left='50%';dotEl.style.top='50%';
+        await sleep(2200);
+      }
+      const n=await runSweep(PATHS[i],i,samples);
+      $('sampleTag').textContent=`Calibration: ${i+1}/${PATHS.length} sweeps · ${samples.length} samples`;
+      if(n<12)diag.textContent='One sweep had fewer usable eye frames, but calibration continued.';
+    }
+
+    if(samples.length<180)throw new Error('too few usable gaze samples');
+
+    modelX=ridge(samples,'x','xF',.010);
+    modelY=ridge(samples,'y','yF',.012);
+
+    const errors=[];
+    for(let i=0;i<samples.length;i+=7){
+      const s=samples[i],px=clamp(dp(s.xF,modelX),0,1),py=clamp(dp(s.yF,modelY),0,1);
+      errors.push(Math.hypot((px-s.x)*innerWidth,(py-s.y)*innerHeight));
+    }
+    const med=Math.round(median(errors));
+    $('err').textContent=med+' px';
+    calibrated=true;$('calState').textContent='Yes';
+    sx=lastTargetX=innerWidth/2;sy=lastTargetY=innerHeight/2;dwellAnchor=null;
+    $('sampleTag').textContent=`Calibration: complete · ${samples.length} samples`;
+    diag.textContent=`Calibration complete. Natural-follow lag compensated by ${FOLLOW_LAG_MS} ms. Fit error ${med}px.`;
+    msg('Calibration complete. Test direction first, then letters.',4200);
+  }catch(e){
+    console.error(e);modelX=modelY=null;diag.textContent='Calibration failed: '+(e.message||e);msg('Calibration failed. Keep the phone fixed and try again.',4500);
+  }finally{
+    cal.classList.remove('show');calBtn.disabled=!latest;calProgress.style.width='0%';
+  }
+}
+
+for(const c of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'){
+  const d=document.createElement('div');d.className='letter';d.textContent=c;$('letters').appendChild(d);
+}
+
+cam.onclick=startCam;
+calBtn.onclick=calibrate;
+$('full').onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await document.documentElement.requestFullscreen()}catch{}};
+window.addEventListener('orientationchange',()=>{
+  calibrated=false;modelX=modelY=null;$('calState').textContent='No';$('err').textContent='—';cursor.style.display='none';
+  msg('Orientation changed. Calibrate again.',3000);
+});
+
+init();
 </script>
-</body></html>
+</body>
+</html>
