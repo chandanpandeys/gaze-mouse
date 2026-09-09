@@ -10,13 +10,14 @@
 <body>
 <main class="app">
   <div class="top">
-    <div><h1>Gaze Mouse</h1><div class="muted">Eye-dominant gaze + deliberate gestures</div></div>
+    <div><h1>Gaze Mouse</h1><div class="muted">Pose-aware personalized gaze map</div></div>
     <div id="status" class="pill">Loading tracker…</div>
   </div>
 
   <section class="controls">
     <div class="card"><label>Camera</label><button id="cam">Start camera</button></div>
-    <div class="card"><label>Gaze calibration</label><button id="calBtn" class="secondary" disabled>Comfort calibrate</button></div>
+    <div class="card"><label>Main training</label><button id="calBtn" class="secondary" disabled>3D pose-map train</button></div>
+    <div class="card"><label>Fine accuracy</label><button id="refineBtn" class="secondary" disabled>Precision refine</button></div>
     <div class="card"><label>Click gesture</label><button id="blinkCalBtn" class="secondary" disabled>Train double blink</button></div>
     <div class="card"><label>Eye control</label><button id="controlBtn" class="secondary" disabled>Eye control OFF</button></div>
     <div class="card"><label>Navigation</label><button id="scrollBtn" class="secondary" disabled>Pointer mode</button></div>
@@ -27,7 +28,7 @@
     <div class="metric"><b id="fps">0</b><span>FPS</span></div>
     <div class="metric"><b id="face">No</b><span>Face</span></div>
     <div class="metric"><b id="pose">—</b><span>Head pose</span></div>
-    <div class="metric"><b id="calState">No</b><span>Calibrated</span></div>
+    <div class="metric"><b id="calState">No</b><span>Pose map</span></div>
     <div class="metric"><b id="err">—</b><span>Fit error</span></div>
     <div class="metric"><b id="clicks">0</b><span>Clicks</span></div>
   </section>
@@ -35,47 +36,41 @@
   <div id="diag" class="diag">The camera can start while the tracker loads.</div>
 
   <section class="panel guide">
-    <strong>Looking is not clicking.</strong><br>
-    Gaze only moves the pointer. Selection requires your trained fast double blink, and actions only work while <b>Eye control is ON</b>. Eye control starts OFF. Hold a left wink for about half a second to toggle it. Hold a right wink while control is on to switch between Pointer and Scroll mode.<br><br>
-    Gaze calibration uses five comfortable horizontal paths and three deliberately slower vertical paths. No diagonals. Each path holds still first and ignores its first 500 ms of motion so your eyes can catch up before training samples are recorded.
+    <strong>New training method: the dot stays fixed; the phone moves.</strong><br>
+    Main training opens full screen and shows 9 tiny fixed dots. At each dot, keep your eyes on the same center point while slowly moving the phone left/right, up/down, closer/farther and through gentle angles. Every camera frame is labelled as the same screen target, so the model learns how the same gaze looks when your face appears in different positions, distances and rotations.<br><br>
+    After that, <b>Precision refine</b> shows 20 additional tiny dots. During refinement keep the phone normally positioned and move only your eyes. This adds screen-location detail without overwriting the pose map.
   </section>
 
-  <section class="panel settings">
+  <section class="panel guide small-guide">
+    <strong>Actions remain deliberate.</strong> Looking never clicks. A click requires your trained fast double blink and Eye control must be ON. Hold a left wink to toggle Eye control. Hold a right wink while it is on to switch Pointer / Scroll mode.
     <label class="switch"><input id="assist" type="checkbox" checked> Precision assist near letters/buttons</label>
-    <div><label>Vertical calibration pace</label><select id="pace"><option value="relaxed" selected>Relaxed (~9 s)</option><option value="very-slow">Very slow (~11.2 s)</option></select></div>
   </section>
 
   <section class="panel">
     <div class="quality">
       <span class="tag" id="sourceTag">Tracker source: loading</span>
-      <span class="tag" id="sampleTag">Gaze calibration: ready</span>
+      <span class="tag" id="sampleTag">Pose map: not trained</span>
       <span class="tag" id="blinkTag">Double blink: untrained</span>
       <span class="tag" id="controlTag">Control: OFF</span>
-      <span class="tag" id="stableTag">Cursor stability: —</span>
+      <span class="tag" id="stableTag">Cursor: —</span>
     </div>
   </section>
 
   <section class="panel">
-    <div class="muted center-note">Letter precision test — look at one character, then double blink only if you want to select it</div>
+    <div class="muted center-note">Letter precision test — looking does nothing; trained double blink selects</div>
     <div class="letters" id="letters"></div>
   </section>
 
   <section class="panel guide small-guide">
-    <strong>Scroll mode</strong><br>
-    Look in the middle third to stop. Look into the upper third to scroll up or the lower third to scroll down. Scrolling starts only after a short hold in that zone, and speed increases gradually toward the edge.
+    <strong>Scroll mode:</strong> middle of the screen is neutral. Upper 30% scrolls up; lower 30% scrolls down after a short hold. The whole action system can stay OFF while you are simply reading or watching.
   </section>
 </main>
 
 <video id="video" playsinline muted autoplay></video>
 <div id="cursor" class="cursor"></div>
-
 <div id="cal" class="cal">
   <div id="dot" class="dot"></div>
-  <div class="copy">
-    <b id="ct">Calibration</b>
-    <div id="ch" class="muted">Get comfortable first.</div>
-    <div id="rest" class="rest"></div>
-  </div>
+  <div class="copy"><b id="ct">Training</b><div id="ch" class="muted">Look at the tiny center.</div><div id="rest" class="rest"></div></div>
   <div class="progress"><div id="calProgress"></div></div>
 </div>
 <div id="toast" class="toast"></div>
