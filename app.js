@@ -2,7 +2,7 @@ import{clamp,sleep,median,dp,ridge}from'./math.js';
 import{FaceTracker}from'./tracker.js';
 
 const $=id=>document.getElementById(id);
-const video=$('video'),status=$('status'),diag=$('diag'),cam=$('cam'),calBtn=$('calBtn'),refineBtn=$('refineBtn'),blinkCalBtn=$('blinkCalBtn'),controlBtn=$('controlBtn'),scrollBtn=$('scrollBtn'),assist=$('assist'),cursor=$('cursor'),cal=$('cal'),dotEl=$('dot'),ct=$('ct'),ch=$('ch'),rest=$('rest'),calProgress=$('calProgress'),toast=$('toast');
+const video=$('video'),status=$('status'),diag=$('diag'),cam=$('cam'),calBtn=$('calBtn'),refineBtn=$('refineBtn'),blinkCalBtn=$('blinkCalBtn'),controlBtn=$('controlBtn'),scrollBtn=$('scrollBtn'),assist=$('assist'),cursor=$('cursor'),cal=$('cal'),dotEl=$('dot'),copyBox=$('copyBox'),ct=$('ct'),ch=$('ch'),rest=$('rest'),trainEyebrow=$('trainEyebrow'),trainActions=$('trainActions'),trainReady=$('trainReady'),trainBack=$('trainBack'),trainExit=$('trainExit'),trainRestart=$('trainRestart'),captureStop=$('captureStop'),countdown=$('countdown'),calProgress=$('calProgress'),toast=$('toast');
 const tracker=new FaceTracker();
 
 let running=false,calibrated=false,latest=null,latestAt=0,lastInfer=0,frames=0,fpsAt=performance.now(),toastTimer=null;
@@ -12,7 +12,9 @@ let controlState='off',frozenClickPoint=null,leftWinkAt=0,leftWinkLatched=false,
 let bothClosed=false,blinkStart=0,blinkSymSum=0,blinkSymN=0,previousBlink=null,blinkProfile=null,blinkCalActive=false,blinkTrialResolve=null;
 let scrollZone='center',scrollZoneSince=0,lastScrollAt=0;
 
-const CAL_KEY='gazeMousePoseMap-v1',BLINK_KEY='gazeMouseBlink-v1';
+let trainingDraft=null,trainingKind=null,guideAction=null,captureActive=false,captureAbort=false,restartArmUntil=0,historyGuard=false,blinkAbort=false;
+
+const CAL_KEY='gazeMousePoseMap-v1',BLINK_KEY='gazeMouseBlink-v1',DRAFT_KEY='gazeMouseTrainingDraft-v2';
 const POSE_POINTS=[
   [.09,.10],[.50,.10],[.91,.10],
   [.09,.50],[.50,.50],[.91,.50],
@@ -20,12 +22,13 @@ const POSE_POINTS=[
 ];
 const REFINE_POINTS=[];for(const y of [.10,.36,.64,.90])for(const x of [.08,.29,.50,.71,.92])REFINE_POINTS.push([x,y]);
 const POSE_STAGES=[
-  ['Hold steady for a moment',900],
-  ['Move the PHONE slowly LEFT ↔ RIGHT',1900],
-  ['Move the PHONE slowly UP ↕ DOWN',2100],
-  ['Move the PHONE slowly CLOSER ↔ FARTHER',1900],
-  ['Gently change the phone ANGLE / TILT',1700]
+  {name:'Steady',instruction:'Keep the phone still and look only at the tiny center dot. Relax your face; do not force your eyes open.',ms:1400},
+  {name:'Left ↔ right',instruction:'Keep looking at the same dot. Move the PHONE slowly left → center → right → center. Your eyes stay on the dot.',ms:3200},
+  {name:'Up ↕ down',instruction:'Keep looking at the same dot. Move the PHONE slowly upward → center → downward → center. Do not chase the phone with your eyes.',ms:3400},
+  {name:'Near ↔ far',instruction:'Keep looking at the same dot. Move the PHONE slowly a little closer → normal → a little farther → normal.',ms:3200},
+  {name:'Angle / tilt',instruction:'Keep looking at the same dot. Gently tilt/rotate the PHONE through a few comfortable angles, then return to normal.',ms:3000}
 ];
+const MAX_SAVED_SAMPLES=1900;
 
 function st(t,c=''){status.textContent=t;status.className='pill'+(c?' '+c:'')}
 function msg(t,ms=2400){toast.textContent=t;toast.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.classList.remove('show'),ms)}
@@ -41,7 +44,8 @@ function setControlState(next,announce=true){
 }
 function toggleControl(){if(!calibrated)return msg('Train the pose map first.');setControlState(controlState==='off'?'pointer':'off')}
 function toggleScroll(){if(controlState!=='off')setControlState(controlState==='scroll'?'pointer':'scroll')}
-function calibrationFrameOK(){return latest&&performance.now()-latestAt<140&&latest.blink.l<.82&&latest.blink.r<.82}
+function calibrationFrameOK(){return latest&&performance.now()-latestAt<150&&latest.blink.l<.82&&latest.blink.r<.82}
+
 function snapTarget(x,y,velocity){
   if(!assist.checked||velocity>13)return{x,y,el:null};
   const els=[...document.querySelectorAll('.letter,button:not(:disabled),select')];let best=null,bd=27;
@@ -49,8 +53,7 @@ function snapTarget(x,y,velocity){
   return best||{x,y,el:null};
 }
 function smoothCursor(tx,ty){
-  const dx=tx-sx,dy=ty-sy,d=Math.hypot(dx,dy);
-  let alpha=d<12?.045:d<38?.075:d<100?.12:d<220?.18:.23;
+  const dx=tx-sx,dy=ty-sy,d=Math.hypot(dx,dy);let alpha=d<12?.045:d<38?.075:d<100?.12:d<220?.18:.23;
   let stepx=dx*alpha,stepy=dy*alpha;const step=Math.hypot(stepx,stepy),maxStep=42;
   if(step>maxStep){const k=maxStep/step;stepx*=k;stepy*=k}
   sx+=stepx;sy+=stepy;return{x:sx,y:sy,velocity:Math.hypot(sx-lastTargetX,sy-lastTargetY)};
@@ -96,12 +99,13 @@ function buildMapNorm(samples){
 }
 function normMap(f){return f.map((v,i)=>(v-mapNorm.mean[i])/mapNorm.sd[i])}
 function mapDistance(a,b){let s=0;for(let i=0;i<a.length;i++){let w=1;if(i<10)w=1.35;else if(i<14)w=.9;else w=.75;const d=(a[i]-b[i])*w;s+=d*d}return Math.sqrt(s/a.length)}
+function downsample(samples,max=MAX_SAVED_SAMPLES){if(samples.length<=max)return samples;const out=[];for(let i=0;i<max;i++)out.push(samples[Math.floor(i*(samples.length-1)/(max-1))]);return out}
 function rebuildModel(){
   if(trainingSamples.length<120)throw new Error('not enough training samples');
   modelX=ridge(trainingSamples,'x','xF',.016);modelY=ridge(trainingSamples,'y','yF',.018);mapNorm=buildMapNorm(trainingSamples);
   const stride=Math.max(1,Math.floor(trainingSamples.length/650));residualAnchors=[];
   for(let i=0;i<trainingSamples.length;i+=stride){const s=trainingSamples[i],gx=dp(s.xF,modelX),gy=dp(s.yF,modelY);residualAnchors.push({nf:normMap(s.mapF),rx:s.x-gx,ry:s.y-gy})}
-  let errors=[];for(let i=0;i<trainingSamples.length;i+=13){const s=trainingSamples[i],p=predictPoint(s);errors.push(Math.hypot((p.x-s.x)*innerWidth,(p.y-s.y)*innerHeight))}
+  const errors=[];for(let i=0;i<trainingSamples.length;i+=13){const s=trainingSamples[i],p=predictPoint(s);errors.push(Math.hypot((p.x-s.x)*innerWidth,(p.y-s.y)*innerHeight))}
   return Math.round(median(errors));
 }
 function predictPoint(sampleLike){
@@ -115,24 +119,37 @@ function predictPoint(sampleLike){
 function updateCursor(now){
   const p=predictPoint(latest),tx=clamp(p.x,.004,.996)*innerWidth,ty=clamp(p.y,.004,.996)*innerHeight,sm=smoothCursor(tx,ty),sn=snapTarget(sm.x,sm.y,sm.velocity);
   if(sn.el!==focusEl){clearFocus();focusEl=sn.el;if(focusEl?.classList.contains('letter'))focusEl.classList.add('focus')}
-  lastStablePoint={x:sn.x,y:sn.y,at:performance.now(),velocity:sm.velocity};
-  $('stableTag').textContent=`Cursor ${Math.round(sm.velocity)}px · map ${Math.round(p.confidence*100)}%`;lastTargetX=sm.x;lastTargetY=sm.y;
+  lastStablePoint={x:sn.x,y:sn.y,at:performance.now(),velocity:sm.velocity};$('stableTag').textContent=`Cursor ${Math.round(sm.velocity)}px · map ${Math.round(p.confidence*100)}%`;lastTargetX=sm.x;lastTargetY=sm.y;
   if(controlState==='off'){cursor.style.display='none';clearFocus();return}
   cursor.style.left=sn.x+'px';cursor.style.top=sn.y+'px';cursor.style.display='block';if(controlState==='scroll')handleScroll(sn.y,now);
 }
 
 function saveCalibration(){
-  try{localStorage.setItem(CAL_KEY,JSON.stringify({ratio:innerWidth/innerHeight,modelX,modelY,mapNorm,residualAnchors,trainingSamples:trainingSamples.slice(-1900)}))}catch(e){console.warn('save calibration',e)}
+  try{localStorage.setItem(CAL_KEY,JSON.stringify({ratio:innerWidth/innerHeight,modelX,modelY,mapNorm,residualAnchors,trainingSamples:downsample(trainingSamples)}))}catch(e){console.warn('save calibration',e)}
 }
 function restoreCalibration(){
   try{
-    const d=JSON.parse(localStorage.getItem(CAL_KEY)||'null');if(!d||Math.abs(d.ratio-innerWidth/innerHeight)>.12)return;
+    const d=JSON.parse(localStorage.getItem(CAL_KEY)||'null');if(!d||Math.abs(d.ratio-innerWidth/innerHeight)>.12)return false;
     modelX=d.modelX;modelY=d.modelY;mapNorm=d.mapNorm;residualAnchors=d.residualAnchors||[];trainingSamples=d.trainingSamples||[];
-    if(modelX&&modelY&&mapNorm&&residualAnchors.length){calibrated=true;$('calState').textContent='Saved';$('sampleTag').textContent=`Pose map: restored · ${trainingSamples.length} samples`;controlBtn.disabled=false;refineBtn.disabled=false;setControlState('off',false)}
-  }catch(e){console.warn('restore calibration',e)}
+    if(modelX&&modelY&&mapNorm&&residualAnchors.length){calibrated=true;$('calState').textContent='Saved';$('sampleTag').textContent=`Pose map: restored · ${trainingSamples.length} samples`;controlBtn.disabled=false;refineBtn.disabled=false;setControlState('off',false);return true}
+  }catch(e){console.warn('restore calibration',e)}return false;
 }
 function saveBlink(){try{if(blinkProfile)localStorage.setItem(BLINK_KEY,JSON.stringify(blinkProfile))}catch{}}
 function restoreBlink(){try{blinkProfile=JSON.parse(localStorage.getItem(BLINK_KEY)||'null');if(blinkProfile)$('blinkTag').textContent=`Double blink: trained · ${Math.round(blinkProfile.total.med)} ms`}catch{}}
+
+function getDraft(){try{return JSON.parse(localStorage.getItem(DRAFT_KEY)||'null')}catch{return null}}
+function compatibleDraft(d=getDraft()){return d&&Math.abs((d.ratio||0)-innerWidth/innerHeight)<=.12?d:null}
+function saveDraft(){if(!trainingDraft)return;trainingDraft.updatedAt=Date.now();try{localStorage.setItem(DRAFT_KEY,JSON.stringify(trainingDraft))}catch(e){console.warn('save draft',e);msg('Training progress could not be saved; storage may be full.',3500)}}
+function clearDraft(){localStorage.removeItem(DRAFT_KEY);trainingDraft=null;updateResumeUI()}
+function totalStages(mode){return mode==='pose'?POSE_POINTS.length*POSE_STAGES.length:mode==='refine'?REFINE_POINTS.length:0}
+function doneStages(d){return d?Object.keys(d.completed||{}).length:0}
+function updateResumeUI(){
+  const d=getDraft();calBtn.textContent='3D pose-map train';refineBtn.textContent='Precision refine';
+  if(d){const total=totalStages(d.mode),done=doneStages(d);if(Math.abs((d.ratio||0)-innerWidth/innerHeight)>.12){$('sampleTag').textContent=`Saved ${d.mode} training kept for another orientation`;return}
+    if(d.mode==='pose'){calBtn.textContent=`Resume 3D training (${done}/${total})`;$('sampleTag').textContent=`Pose training saved · ${done}/${total} stages`}
+    if(d.mode==='refine'){refineBtn.textContent=`Resume refine (${done}/${total})`;$('sampleTag').textContent=`Precision training saved · ${done}/${total} dots`}
+  }
+}
 
 async function initTracker(){
   try{await tracker.init(t=>diag.textContent=t,n=>$('sourceTag').textContent='Tracker source: '+n);st('Tracker ready','ok');diag.textContent='Tracker ready. Start camera.';if(running)requestAnimationFrame(loop)}
@@ -149,7 +166,7 @@ function loop(now){
     if(latest){
       $('pose').textContent=Math.round(latest.pose.yaw)+'°/'+Math.round(latest.pose.pitch)+'°';st(calibrated?'Tracking':'Face locked','ok');
       calBtn.disabled=false;blinkCalBtn.disabled=false;controlBtn.disabled=!calibrated;refineBtn.disabled=!calibrated;
-      diag.textContent=calibrated?'Pose-aware gaze map active. Actions only happen while Eye control is ON.':'Face found. Run 3D pose-map training.';
+      diag.textContent=calibrated?'Pose-aware gaze map active. Actions only happen while Eye control is ON.':'Face found. Start or resume pose-map training.';
       processGestures(now);if(calibrated&&!cal.classList.contains('show')&&latest.blink.l<.56&&latest.blink.r<.56)updateCursor(now);
     }else{st('Find my face…');calBtn.disabled=true;blinkCalBtn.disabled=true;controlBtn.disabled=true;refineBtn.disabled=true;scrollBtn.disabled=true;cursor.style.display='none';clearFocus()}
   }catch(e){console.warn(e)}
@@ -157,84 +174,158 @@ function loop(now){
 }
 
 async function enterFullscreen(){try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen()}catch{}}
-function poseCoverage(samples){
-  if(samples.length<2)return'coverage starting…';
-  const vals=k=>samples.map(s=>s[k]),span=k=>Math.max(...vals(k))-Math.min(...vals(k));
-  const cx=span('cx'),cy=span('cy'),sc=span('sc'),yaw=span('yaw'),pitch=span('pitch');
-  return`coverage x ${Math.round(cx*100)} · y ${Math.round(cy*100)} · depth ${Math.round(sc*1000)} · angle ${Math.round(yaw)}°/${Math.round(pitch)}°`;
+function pushHistoryGuard(){if(historyGuard)return;history.pushState({gazeTraining:true},document.title);historyGuard=true}
+function releaseHistoryGuard(){if(!historyGuard)return;historyGuard=false;try{history.back()}catch{}}
+function setGuide(title,text,meta,readyText,onReady,canBack=true){
+  captureActive=false;captureAbort=false;copyBox.style.display='block';trainActions.style.display='grid';dotEl.style.display='none';captureStop.style.display='none';countdown.style.display='none';
+  trainEyebrow.textContent='NOT RECORDING';trainEyebrow.classList.remove('recording');ct.textContent=title;ch.textContent=text;rest.textContent=meta||'Nothing is recording. Read this first.';
+  trainReady.textContent=readyText||'I’m ready';trainBack.disabled=!canBack;guideAction=onReady;trainRestart.textContent='Start over';restartArmUntil=0;
+}
+function setCaptureUI(x,y){
+  copyBox.style.display='none';trainActions.style.display='none';captureStop.style.display='block';dotEl.style.display='block';dotEl.style.left=x*100+'%';dotEl.style.top=y*100+'%';
+}
+async function runCountdown(x,y){
+  setCaptureUI(x,y);captureStop.style.display='block';countdown.style.display='block';
+  for(const n of [3,2,1]){if(captureAbort)return false;countdown.textContent=n;await sleep(700)}
+  countdown.textContent='';countdown.style.display='none';try{navigator.vibrate?.(35)}catch{}return !captureAbort;
 }
 function captureSample(x,y,weight=1){
   if(!calibrationFrameOK())return null;
   return{xF:[...latest.xF],yF:[...latest.yF],mapF:[...latest.mapF],x,y,weight,cx:latest.geometry.centerX,cy:latest.geometry.centerY,sc:latest.geometry.eyeDist,yaw:latest.pose.yaw,pitch:latest.pose.pitch};
 }
-async function trainPosePoint(point,index,out){
-  const[x,y]=point;dotEl.style.left=x*100+'%';dotEl.style.top=y*100+'%';dotEl.style.display='block';
-  ct.textContent=`Pose-map point ${index+1} of ${POSE_POINTS.length}`;ch.textContent='Keep your eyes on the tiny center. The dot will NOT move.';rest.textContent='Settle and blink now. Then move the PHONE, not your gaze.';await sleep(1500);
-  const local=[];let stageIndex=0;
-  for(const[label,ms]of POSE_STAGES){
-    ch.textContent=label;rest.textContent='Keep looking at the same tiny dot. Move slowly and naturally.';
-    const start=performance.now();let last=0;
-    while(performance.now()-start<ms){
-      const now=performance.now();if(now-last>44){const s=captureSample(x,y,1);if(s){out.push(s);local.push(s);last=now}}
-      rest.textContent=`${label} · ${local.length} frames · ${poseCoverage(local)}`;
-      const within=(performance.now()-start)/ms,overall=(index+(stageIndex+within)/POSE_STAGES.length)/POSE_POINTS.length;calProgress.style.width=(overall*100).toFixed(1)+'%';
-      await sleep(18);
-    }
-    stageIndex++;await sleep(180);
-  }
-  rest.textContent=`Point ${index+1} recorded · ${local.length} usable frames. Moving on automatically.`;await sleep(650);
+function stageKey(p,s=0){return`${p}:${s}`}
+function previousCursor(d){let p=d.pointIndex||0,s=d.stageIndex||0;if(d.mode==='pose'){if(s>0)s--;else if(p>0){p--;s=POSE_STAGES.length-1}else return null}else{if(p>0)p--;else return null;s=0}return{p,s}}
+function advanceCursor(d){if(d.mode==='pose'){if(d.stageIndex<POSE_STAGES.length-1)d.stageIndex++;else{d.pointIndex++;d.stageIndex=0}}else d.pointIndex++}
+function currentTrainingFinished(d){return d.mode==='pose'?d.pointIndex>=POSE_POINTS.length:d.pointIndex>=REFINE_POINTS.length}
+function trainingBack(){
+  if(captureActive){captureAbort=true;return}
+  if(!trainingDraft)return;const prev=previousCursor(trainingDraft);if(!prev)return msg('You are already at the first stage.');
+  delete trainingDraft.completed[stageKey(prev.p,prev.s)];trainingDraft.pointIndex=prev.p;trainingDraft.stageIndex=prev.s;saveDraft();updateResumeUI();
+  if(trainingDraft.mode==='pose')showPoseStageGuide('Previous stage removed. Record it again when ready.');else showRefineGuide('Previous dot removed. Record it again when ready.');
 }
-async function calibratePoseMap(){
-  if(!latest)return msg('Start camera and keep your full face visible.');
-  await enterFullscreen();setControlState('off',false);calibrated=false;$('calState').textContent='No';$('err').textContent='—';clearFocus();cursor.style.display='none';
-  calBtn.disabled=true;refineBtn.disabled=true;cal.classList.add('show');calProgress.style.width='0%';dotEl.style.display='block';
-  try{
-    const samples=[];ct.textContent='3D pose-map training';ch.textContent='Nine fixed dots. For each dot, keep looking at it while you slowly move the phone through different positions and angles.';rest.textContent='This trains screen focus across face position, distance and camera angle. Starts in 4 seconds.';dotEl.style.left='50%';dotEl.style.top='50%';await sleep(4000);
-    for(let i=0;i<POSE_POINTS.length;i++){
-      if(i>0&&i%3===0){ct.textContent='Eye break';ch.textContent='Relax and blink normally.';rest.textContent='Next row starts in 3 seconds.';dotEl.style.left='50%';dotEl.style.top='50%';await sleep(3000)}
-      await trainPosePoint(POSE_POINTS[i],i,samples);$('sampleTag').textContent=`Pose map: ${i+1}/${POSE_POINTS.length} dots · ${samples.length} samples`;
-    }
-    if(samples.length<700)throw new Error('too few usable samples');
-    trainingSamples=samples.slice(-1500);const med=rebuildModel();calibrated=true;$('calState').textContent='Yes';$('err').textContent=med+' px';
-    sx=lastTargetX=innerWidth/2;sy=lastTargetY=innerHeight/2;lastStablePoint={x:sx,y:sy,at:0,velocity:999};controlBtn.disabled=false;refineBtn.disabled=false;setControlState('off',false);saveCalibration();
-    $('sampleTag').textContent=`Pose map: trained · ${trainingSamples.length} samples`;diag.textContent=`Pose map trained across phone position/angle. Fit ${med}px. Optional Precision refine adds more screen locations.`;msg('Pose map complete. Run Precision refine for smaller targets.',4200);
-  }catch(e){console.error(e);modelX=modelY=null;mapNorm=null;residualAnchors=[];diag.textContent='Pose-map training failed: '+(e.message||e);msg('Training failed. Retry with the face visible.',4000)}
-  finally{cal.classList.remove('show');calBtn.disabled=!latest;refineBtn.disabled=!calibrated;calProgress.style.width='0%'}
+function restartTraining(){
+  const now=Date.now();if(now>restartArmUntil){restartArmUntil=now+3500;trainRestart.textContent='Tap again to erase draft';msg('Only unfinished training will be erased. Your last completed gaze map stays saved.',3000);return}
+  const mode=trainingDraft?.mode||trainingKind;if(!mode)return;trainingDraft={version:2,mode,ratio:innerWidth/innerHeight,pointIndex:0,stageIndex:0,completed:{},createdAt:Date.now(),updatedAt:Date.now()};saveDraft();updateResumeUI();
+  if(mode==='pose')showPoseIntro(true);else if(mode==='refine')showRefineIntro(true);
 }
-async function refinePrecision(){
-  if(!calibrated||!latest)return msg('Complete the 3D pose map first.');
-  await enterFullscreen();setControlState('off',false);refineBtn.disabled=true;calBtn.disabled=true;cal.classList.add('show');calProgress.style.width='0%';dotEl.style.display='block';
+async function saveAndExitTraining(){
+  captureAbort=true;blinkAbort=true;saveDraft();cal.classList.remove('show');guideAction=null;captureActive=false;captureStop.style.display='none';countdown.style.display='none';calProgress.style.width='0%';
+  calBtn.disabled=!latest;refineBtn.disabled=!calibrated;blinkCalBtn.disabled=!latest;updateResumeUI();releaseHistoryGuard();
+  try{if(document.fullscreenElement)await document.exitFullscreen()}catch{}
+  msg(trainingDraft?'Training saved. You can resume later.':'Training closed.',2600);
+}
+function pauseTraining(reason='Training paused.'){captureAbort=true;saveDraft();if(trainingDraft?.mode==='pose')setGuide('Training paused',reason,'Completed stages are saved. The current unfinished stage was discarded.','Resume',()=>showPoseStageGuide(),doneStages(trainingDraft)>0);else if(trainingDraft?.mode==='refine')setGuide('Training paused',reason,'Completed dots are saved. The current unfinished dot was discarded.','Resume',()=>showRefineGuide(),doneStages(trainingDraft)>0)}
+
+function makeDraft(mode){return{version:2,mode,ratio:innerWidth/innerHeight,pointIndex:0,stageIndex:0,completed:{},createdAt:Date.now(),updatedAt:Date.now()}}
+function openTraining(mode){trainingKind=mode;setControlState('off',false);cursor.style.display='none';clearFocus();cal.classList.add('show');calProgress.style.width='0%';pushHistoryGuard();enterFullscreen()}
+function startPoseTraining(){
+  if(!latest)return msg('Start camera and keep your full face visible.');const raw=getDraft();
+  if(raw&&Math.abs((raw.ratio||0)-innerWidth/innerHeight)>.12)return msg('Saved training belongs to another orientation. Rotate back to resume it.',3800);
+  if(raw&&raw.mode!=='pose')return msg('You have unfinished precision training. Resume or finish that first.',3500);
+  trainingDraft=raw||makeDraft('pose');saveDraft();openTraining('pose');showPoseIntro(false);
+}
+function showPoseIntro(restarted=false){
+  const done=doneStages(trainingDraft),total=totalStages('pose');
+  setGuide(restarted?'Fresh pose training ready':done?'Resume 3D pose training':'Before 3D pose training',
+    done?`Your previous progress is safe: ${done} of ${total} short stages are already recorded.`:'There are 9 screen dots. For each dot you will do 5 short phone movements. You will NEVER be asked to read while recording.',
+    'For every stage: read the instruction → tap I’m ready → 3-second countdown → focus only on the dot. After recording, the app pauses before showing the next instruction.',
+    done?'Continue to next instruction':'Show first instruction',()=>showPoseStageGuide(),done>0);
+  calProgress.style.width=(done/total*100).toFixed(1)+'%';
+}
+function showPoseStageGuide(note=''){
+  if(currentTrainingFinished(trainingDraft))return finalizePoseTraining();
+  const p=trainingDraft.pointIndex,s=trainingDraft.stageIndex,stage=POSE_STAGES[s],done=doneStages(trainingDraft),total=totalStages('pose');
+  setGuide(`Dot ${p+1} of ${POSE_POINTS.length} · ${stage.name}`,stage.instruction,
+    `${note?note+' ':''}Nothing is recording now. When you tap I’m ready, find the tiny dot during the 3-second countdown. Then perform only this one movement.`,
+    'I’m ready',()=>capturePoseStage(),done>0);
+  calProgress.style.width=(done/total*100).toFixed(1)+'%';
+}
+async function capturePoseStage(){
+  const p=trainingDraft.pointIndex,s=trainingDraft.stageIndex,stage=POSE_STAGES[s],[x,y]=POSE_POINTS[p];captureAbort=false;
+  if(!await runCountdown(x,y)){showPoseStageGuide('Capture cancelled. No data from that attempt was kept.');return}
+  captureActive=true;const local=[];let last=0,start=performance.now();
+  while(performance.now()-start<stage.ms&&!captureAbort){const now=performance.now();if(now-last>50){const q=captureSample(x,y,1);if(q){local.push(q);last=now}}const frac=(performance.now()-start)/stage.ms;calProgress.style.width=((doneStages(trainingDraft)+clamp(frac,0,1))/totalStages('pose')*100).toFixed(1)+'%';await sleep(18)}
+  captureActive=false;captureStop.style.display='none';dotEl.style.display='none';try{navigator.vibrate?.([35,45,35])}catch{}
+  if(captureAbort){showPoseStageGuide('That attempt was discarded. Your earlier stages are still saved.');return}
+  if(local.length<12){showPoseStageGuide(`Only ${local.length} usable frames were visible, so this stage was NOT saved. Keep both eyes visible and retry.`);return}
+  trainingDraft.completed[stageKey(p,s)]=downsample(local,58);advanceCursor(trainingDraft);saveDraft();updateResumeUI();
+  if(currentTrainingFinished(trainingDraft))return finalizePoseTraining();
+  showPoseStageGuide(`Saved ${local.length} usable frames from the last stage.`);
+}
+async function finalizePoseTraining(){
+  const old={modelX,modelY,mapNorm,residualAnchors,trainingSamples,calibrated};
+  setGuide('Building your gaze map','All training stages are saved. Now the phone is fitting the model.','Do not close the page for a moment.','Please wait',()=>{},false);trainReady.disabled=true;
   try{
-    const added=[];ct.textContent='Precision refinement';ch.textContent='20 tiny fixed dots. Keep the phone in a normal position now — only your eyes move.';rest.textContent='Each point is short. Blink between points.';await sleep(2800);
-    for(let i=0;i<REFINE_POINTS.length;i++){
-      const[x,y]=REFINE_POINTS[i];dotEl.style.left=x*100+'%';dotEl.style.top=y*100+'%';ct.textContent=`Precision point ${i+1} of ${REFINE_POINTS.length}`;ch.textContent='Look exactly at the tiny center.';rest.textContent='Settle…';await sleep(650);
-      const start=performance.now();let last=0,count=0;rest.textContent='Recording this exact screen location…';
-      while(performance.now()-start<1050){const now=performance.now();if(now-last>44){const s=captureSample(x,y,1.35);if(s){added.push(s);last=now;count++}}calProgress.style.width=((i+(performance.now()-start)/1050)/REFINE_POINTS.length*100).toFixed(1)+'%';await sleep(18)}
-      rest.textContent=`${count} frames recorded`;await sleep(260);
-      if(i===9){ct.textContent='Short eye break';ch.textContent='Blink and relax for 2 seconds.';rest.textContent='Ten points remain.';await sleep(2000)}
-    }
-    trainingSamples=[...trainingSamples,...added].slice(-1900);const med=rebuildModel();$('err').textContent=med+' px';saveCalibration();$('sampleTag').textContent=`Pose map + precision: ${trainingSamples.length} samples`;diag.textContent=`Precision refinement added ${added.length} samples. Current fit ${med}px.`;msg('Precision refinement complete.',3600);
-  }catch(e){console.error(e);msg('Precision refinement stopped. Base pose map is still kept.',3500)}
-  finally{cal.classList.remove('show');refineBtn.disabled=!calibrated;calBtn.disabled=!latest;calProgress.style.width='0%'}
+    const samples=[];for(let p=0;p<POSE_POINTS.length;p++)for(let s=0;s<POSE_STAGES.length;s++)samples.push(...(trainingDraft.completed[stageKey(p,s)]||[]));
+    if(samples.length<420)throw new Error('too few saved training samples');trainingSamples=downsample(samples);const med=rebuildModel();calibrated=true;$('calState').textContent='Yes';$('err').textContent=med+' px';sx=lastTargetX=innerWidth/2;sy=lastTargetY=innerHeight/2;lastStablePoint={x:sx,y:sy,at:0,velocity:999};saveCalibration();localStorage.removeItem(DRAFT_KEY);trainingDraft=null;updateResumeUI();
+    $('sampleTag').textContent=`Pose map: trained · ${trainingSamples.length} samples`;diag.textContent=`Pose map trained. Fit ${med}px. Precision refine can add more exact screen locations.`;controlBtn.disabled=false;refineBtn.disabled=false;setControlState('off',false);await saveAndExitTraining();msg('Pose map complete. Nothing was lost.',4000);
+  }catch(e){console.error(e);modelX=old.modelX;modelY=old.modelY;mapNorm=old.mapNorm;residualAnchors=old.residualAnchors;trainingSamples=old.trainingSamples;calibrated=old.calibrated;trainReady.disabled=false;saveDraft();setGuide('Could not finish the model','Your training data is still saved. Nothing was erased.',String(e.message||e),'Return to training',()=>showPoseStageGuide(),doneStages(trainingDraft)>0)}
+}
+
+function startRefineTraining(){
+  if(!calibrated||!latest)return msg('Complete or restore the main pose map first.');const raw=getDraft();
+  if(raw&&Math.abs((raw.ratio||0)-innerWidth/innerHeight)>.12)return msg('Saved training belongs to another orientation. Rotate back to resume it.',3800);
+  if(raw&&raw.mode!=='refine')return msg('You have unfinished pose training. Resume or finish that first.',3500);
+  trainingDraft=raw||makeDraft('refine');saveDraft();openTraining('refine');showRefineIntro(false);
+}
+function showRefineIntro(restarted=false){
+  const done=doneStages(trainingDraft),total=totalStages('refine');
+  setGuide(restarted?'Fresh precision training ready':done?'Resume precision refinement':'Before precision refinement',
+    done?`${done} of ${total} precision dots are already safely recorded.`:'There are 20 fixed dots. For each one, read first, then the text disappears before recording. Keep the phone normally positioned and move only your eyes.',
+    'Each dot is independent. Back removes only the previous dot. Save & exit keeps everything you have completed.',done?'Continue':'Show first dot instruction',()=>showRefineGuide(),done>0);
+  calProgress.style.width=(done/total*100).toFixed(1)+'%';
+}
+function showRefineGuide(note=''){
+  if(currentTrainingFinished(trainingDraft))return finalizeRefineTraining();const p=trainingDraft.pointIndex,done=doneStages(trainingDraft),total=totalStages('refine');
+  setGuide(`Precision dot ${p+1} of ${REFINE_POINTS.length}`,'Keep the phone comfortably still. During recording, look exactly at the tiny center dot and keep your head natural.',`${note?note+' ':''}Nothing is recording now. Tap I’m ready; after the countdown the instructions disappear.`,'I’m ready',()=>captureRefinePoint(),done>0);calProgress.style.width=(done/total*100).toFixed(1)+'%';
+}
+async function captureRefinePoint(){
+  const p=trainingDraft.pointIndex,[x,y]=REFINE_POINTS[p];captureAbort=false;if(!await runCountdown(x,y)){showRefineGuide('Capture cancelled. Nothing was lost.');return}
+  captureActive=true;const local=[];let last=0,start=performance.now(),ms=1250;
+  while(performance.now()-start<ms&&!captureAbort){const now=performance.now();if(now-last>48){const q=captureSample(x,y,1.35);if(q){local.push(q);last=now}}calProgress.style.width=((doneStages(trainingDraft)+clamp((performance.now()-start)/ms,0,1))/totalStages('refine')*100).toFixed(1)+'%';await sleep(18)}
+  captureActive=false;captureStop.style.display='none';dotEl.style.display='none';if(captureAbort){showRefineGuide('That attempt was discarded. Previous dots are still saved.');return}if(local.length<10){showRefineGuide(`Only ${local.length} usable frames were visible, so this dot was not saved. Retry.`);return}
+  trainingDraft.completed[stageKey(p,0)]=downsample(local,32);advanceCursor(trainingDraft);saveDraft();updateResumeUI();if(currentTrainingFinished(trainingDraft))return finalizeRefineTraining();showRefineGuide(`Saved ${local.length} usable frames from the previous dot.`);
+}
+async function finalizeRefineTraining(){
+  const old={modelX,modelY,mapNorm,residualAnchors,trainingSamples,calibrated};setGuide('Applying precision refinement','All precision dots are saved. Updating the existing gaze map now.','Your previous completed map remains safe until this succeeds.','Please wait',()=>{},false);trainReady.disabled=true;
+  try{const added=[];for(let p=0;p<REFINE_POINTS.length;p++)added.push(...(trainingDraft.completed[stageKey(p,0)]||[]));trainingSamples=downsample([...old.trainingSamples,...added]);const med=rebuildModel();saveCalibration();localStorage.removeItem(DRAFT_KEY);trainingDraft=null;updateResumeUI();$('err').textContent=med+' px';$('sampleTag').textContent=`Pose map + precision · ${trainingSamples.length} samples`;diag.textContent=`Precision refinement added ${added.length} samples. Current fit ${med}px.`;await saveAndExitTraining();msg('Precision refinement complete.',3600)}
+  catch(e){console.error(e);modelX=old.modelX;modelY=old.modelY;mapNorm=old.mapNorm;residualAnchors=old.residualAnchors;trainingSamples=old.trainingSamples;calibrated=old.calibrated;trainReady.disabled=false;saveDraft();setGuide('Could not apply refinement','Your previous gaze map and unfinished refinement are both still safe.',String(e.message||e),'Return to refinement',()=>showRefineGuide(),doneStages(trainingDraft)>0)}
 }
 
 function waitForBlinkTrial(timeoutMs=6500){return new Promise((resolve,reject)=>{let active=true;const handler=v=>{if(!active)return;active=false;clearTimeout(timer);if(blinkTrialResolve===handler)blinkTrialResolve=null;resolve(v)},timer=setTimeout(()=>{if(!active)return;active=false;if(blinkTrialResolve===handler)blinkTrialResolve=null;reject(new Error('timeout'))},timeoutMs);blinkTrialResolve=handler})}
-async function calibrateBlink(){
-  if(!latest)return msg('Start camera and keep both eyes visible.');setControlState('off',false);blinkCalActive=true;previousBlink=null;frozenClickPoint=null;blinkCalBtn.disabled=true;cal.classList.add('show');dotEl.style.display='none';calProgress.style.width='0%';const trials=[];
+function startBlinkTraining(){
+  if(!latest)return msg('Start camera and keep both eyes visible.');trainingKind='blink';trainingDraft=null;blinkAbort=false;setControlState('off',false);cal.classList.add('show');pushHistoryGuard();dotEl.style.display='none';calProgress.style.width='0%';
+  setGuide('Before double-blink training','You will perform 10 intentional fast double blinks. Read this now; nothing is recording.','After you tap Start, every trial gives a clear countdown before the blink window opens. You do not need to stare at any target.','Start blink training',()=>runBlinkTraining(),false);
+}
+async function runBlinkTraining(){
+  blinkCalActive=true;previousBlink=null;frozenClickPoint=null;blinkCalBtn.disabled=true;const trials=[];trainActions.style.display='none';copyBox.style.display='block';
   try{
-    ct.textContent='Double-blink training';ch.textContent='We will record 10 fast intentional double blinks.';rest.textContent='Training begins in 3 seconds.';await sleep(3000);
     for(let i=0;i<10;i++){
-      if(i===5){ct.textContent='Eye break';ch.textContent='Relax and blink normally for 3 seconds.';rest.textContent='Five examples left.';await sleep(3000)}
-      let ok=false;while(!ok){ct.textContent=`Double blink ${i+1} of 10`;ch.textContent='Wait for READY, then perform one quick double blink.';rest.textContent='Do not blink early.';await sleep(900);ch.textContent='READY — double blink now';
-        try{const c=await waitForBlinkTrial();if(c.total<1050&&c.gap>35&&c.gap<700&&c.d1>45&&c.d2>45){trials.push(c);ok=true;msg('Recorded',550)}else{rest.textContent='Unusual timing. Repeat this one.';await sleep(700)}}catch{rest.textContent='No clear double blink. Repeat this one.';await sleep(700)}}
-      calProgress.style.width=((i+1)/10*100).toFixed(0)+'%';await sleep(420);
+      if(blinkAbort)throw new Error('cancelled');copyBox.style.display='block';ct.textContent=`Double blink ${i+1} of 10`;ch.textContent='Get comfortable. A 3-second countdown comes next.';rest.textContent='Blink naturally now if needed; this is not recording.';await sleep(i===0?1200:700);
+      copyBox.style.display='none';countdown.style.display='block';for(const n of [3,2,1]){if(blinkAbort)throw new Error('cancelled');countdown.textContent=n;await sleep(650)}countdown.textContent='BLINK';
+      try{const c=await waitForBlinkTrial(5200);if(c.total<1050&&c.gap>35&&c.gap<700&&c.d1>45&&c.d2>45){trials.push(c);try{navigator.vibrate?.(40)}catch{}}else{i--;}}
+      catch{if(blinkAbort)throw new Error('cancelled');i--}
+      countdown.style.display='none';calProgress.style.width=(Math.max(0,i+1)/10*100).toFixed(0)+'%';
+      if(i===4){copyBox.style.display='block';ct.textContent='Eye break';ch.textContent='Relax and blink normally.';rest.textContent='Five examples are safely recorded. Continuing in 3 seconds.';await sleep(3000)}
     }
-    blinkProfile=buildBlinkProfile(trials);saveBlink();$('blinkTag').textContent=`Double blink: trained · ${Math.round(blinkProfile.total.med)} ms`;diag.textContent=`Double blink trained. Median total ${Math.round(blinkProfile.total.med)} ms; median gap ${Math.round(blinkProfile.gap.med)} ms.`;msg('Double blink trained. Eye control is still OFF.',3600);
-  }catch(e){console.error(e);blinkProfile=null;$('blinkTag').textContent='Double blink: untrained';msg('Blink training stopped. Try again.',3000)}
-  finally{blinkCalActive=false;blinkTrialResolve=null;previousBlink=null;bothClosed=false;cal.classList.remove('show');dotEl.style.display='block';calProgress.style.width='0%';blinkCalBtn.disabled=!latest}
+    blinkProfile=buildBlinkProfile(trials);saveBlink();$('blinkTag').textContent=`Double blink: trained · ${Math.round(blinkProfile.total.med)} ms`;diag.textContent=`Double blink trained. Median total ${Math.round(blinkProfile.total.med)} ms; median gap ${Math.round(blinkProfile.gap.med)} ms.`;blinkCalActive=false;blinkTrialResolve=null;await saveAndExitTraining();msg('Double blink trained. Eye control is still OFF.',3600);
+  }catch(e){blinkCalActive=false;blinkTrialResolve=null;previousBlink=null;bothClosed=false;countdown.style.display='none';if(String(e.message)!=='cancelled')console.error(e);await saveAndExitTraining();msg('Blink training stopped. Previous blink profile was not erased.',3000)}
 }
 
 for(const c of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'){const d=document.createElement('button');d.className='letter';d.textContent=c;d.onclick=()=>msg('Selected '+c,900);$('letters').appendChild(d)}
-cam.onclick=startCamera;calBtn.onclick=calibratePoseMap;refineBtn.onclick=refinePrecision;blinkCalBtn.onclick=calibrateBlink;controlBtn.onclick=toggleControl;scrollBtn.onclick=toggleScroll;$('full').onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await document.documentElement.requestFullscreen()}catch{}};
-window.addEventListener('orientationchange',()=>{calibrated=false;modelX=modelY=null;mapNorm=null;residualAnchors=[];$('calState').textContent='No';$('err').textContent='—';cursor.style.display='none';setControlState('off',false);msg('Orientation changed. Train the pose map again.',3200)});
-restoreBlink();restoreCalibration();initTracker();
+cam.onclick=startCamera;calBtn.onclick=startPoseTraining;refineBtn.onclick=startRefineTraining;blinkCalBtn.onclick=startBlinkTraining;controlBtn.onclick=toggleControl;scrollBtn.onclick=toggleScroll;
+$('full').onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await document.documentElement.requestFullscreen()}catch{}};
+trainReady.onclick=()=>{const fn=guideAction;guideAction=null;trainReady.disabled=false;fn?.()};trainBack.onclick=trainingBack;trainExit.onclick=saveAndExitTraining;trainRestart.onclick=restartTraining;captureStop.onclick=()=>{captureAbort=true;blinkAbort=true};
+
+window.addEventListener('popstate',()=>{
+  if(cal.classList.contains('show')){history.pushState({gazeTraining:true},document.title);historyGuard=true;captureAbort=true;blinkAbort=true;if(trainingDraft)saveDraft();setTimeout(()=>{if(trainingDraft)pauseTraining('The Back action paused training instead of deleting it.');else saveAndExitTraining()},0)}
+});
+window.addEventListener('beforeunload',()=>{if(trainingDraft)saveDraft()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&cal.classList.contains('show')&&trainingDraft){captureAbort=true;saveDraft()}});
+document.addEventListener('fullscreenchange',()=>{if(cal.classList.contains('show')&&!document.fullscreenElement&&captureActive)pauseTraining('Fullscreen was closed. Completed stages are still saved.')});
+window.addEventListener('orientationchange',()=>{
+  setControlState('off',false);cursor.style.display='none';captureAbort=true;if(trainingDraft)saveDraft();
+  setTimeout(()=>{calibrated=false;$('calState').textContent='Paused';const restored=restoreCalibration();if(!restored){$('sampleTag').textContent='Saved gaze map kept — return to the trained orientation';diag.textContent='Orientation changed. No calibration data was deleted.'}updateResumeUI();if(cal.classList.contains('show')&&trainingDraft)pauseTraining('Orientation changed. Completed stages are saved; return to the same orientation before resuming.')},500);
+});
+
+restoreBlink();restoreCalibration();updateResumeUI();initTracker();
