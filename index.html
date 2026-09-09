@@ -36,9 +36,10 @@
   <div id="diag" class="diag">The camera can start while the tracker loads.</div>
 
   <section class="panel guide">
-    <strong>New training method: the dot stays fixed; the phone moves.</strong><br>
-    Main training opens full screen and shows 9 tiny fixed dots. At each dot, keep your eyes on the same center point while slowly moving the phone left/right, up/down, closer/farther and through gentle angles. Every camera frame is labelled as the same screen target, so the model learns how the same gaze looks when your face appears in different positions, distances and rotations.<br><br>
-    After that, <b>Precision refine</b> shows 20 additional tiny dots. During refinement keep the phone normally positioned and move only your eyes. This adds screen-location detail without overwriting the pose map.
+    <strong>Training no longer mixes instructions with recording.</strong><br>
+    Every step now works as: <b>read first → tap I’m ready → 3-second countdown → recording</b>. While the camera is recording a gaze sample, the instructions disappear so you only focus on the dot. After each short stage the app pauses again before the next instruction.
+    <br><br>
+    Progress is saved after every completed stage. <b>Back</b> removes only the last stage so you can redo it. <b>Save & exit</b> keeps unfinished training. Reloading or accidentally leaving the page can resume saved progress instead of wiping it.
   </section>
 
   <section class="panel guide small-guide">
@@ -68,11 +69,29 @@
 
 <video id="video" playsinline muted autoplay></video>
 <div id="cursor" class="cursor"></div>
-<div id="cal" class="cal">
+
+<div id="cal" class="cal" aria-live="polite">
   <div id="dot" class="dot"></div>
-  <div class="copy"><b id="ct">Training</b><div id="ch" class="muted">Look at the tiny center.</div><div id="rest" class="rest"></div></div>
+  <div id="copyBox" class="copy">
+    <div id="trainEyebrow" class="train-eyebrow">NOT RECORDING</div>
+    <b id="ct">Training</b>
+    <div id="ch" class="muted">Read the instruction first.</div>
+    <div id="rest" class="rest"></div>
+  </div>
+
+  <div id="countdown" class="countdown"></div>
+
+  <div id="trainActions" class="train-actions">
+    <button id="trainBack" class="secondary training-btn">← Back</button>
+    <button id="trainReady" class="training-btn">I’m ready</button>
+    <button id="trainExit" class="secondary training-btn">Save & exit</button>
+    <button id="trainRestart" class="danger training-btn">Start over</button>
+  </div>
+
+  <button id="captureStop" class="capture-stop secondary">Stop / retry</button>
   <div class="progress"><div id="calProgress"></div></div>
 </div>
+
 <div id="toast" class="toast"></div>
 <script type="module" src="./app.js"></script>
 </body>
